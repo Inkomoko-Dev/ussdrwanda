@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>*311# Simulator</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --ink:#1d2330; --muted:#6b7280; --accent:#0a7d4f; --line:#d9dde3; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width:420px; margin:24px auto; padding:0 16px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  p.hint { color:var(--muted); font-size:13px; margin:0 0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:12px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 4px; }
+  input, select { width:100%; padding:10px; border:1px solid var(--line); border-radius:8px; font-size:15px; }
+  .screen { background:#10151f; color:#e6f4ea; font-family:ui-monospace,Menlo,monospace; font-size:14px;
+            white-space:pre-wrap; min-height:180px; padding:14px; border-radius:10px; }
+  .row { display:flex; gap:8px; margin-top:10px; }
+  button { flex:1; padding:11px; border:0; border-radius:8px; font-size:15px; cursor:pointer; background:var(--accent); color:#fff; }
+  button.secondary { background:#e5e7eb; color:var(--ink); }
+  .meta { font-size:12px; color:var(--muted); margin-top:8px; word-break:break-all; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Inkomoko *311# simulator</h1>
+  <p class="hint">Sends FDI-gateway style JSON to <code>/api/ussd</code>. Mock test numbers: 250788000001, 250788000002, 250722000003.</p>
+
+  <div class="card">
+    <label for="msisdn">Phone (MSISDN)</label>
+    <input id="msisdn" value="250788000001">
+    <label for="network">Network</label>
+    <select id="network"><option>MTN-RW</option><option>AIRTEL-RW</option></select>
+    <div class="row"><button id="dial">Dial *311#</button></div>
+  </div>
+
+  <div class="card">
+    <div id="screen" class="screen">Press "Dial *311#" to start.</div>
+    <div class="row">
+      <input id="reply" placeholder="Your reply" inputmode="numeric" autocomplete="off">
+    </div>
+    <div class="row">
+      <button id="send">Send</button>
+      <button id="cancel" class="secondary">Cancel</button>
+    </div>
+    <div id="meta" class="meta"></div>
+  </div>
+</main>
+<script>
+  let session = null;
+  const $ = (id) => document.getElementById(id);
+
+  function uuid() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+  function ts() { return new Date().toISOString().replace('T', ' ').substring(0, 19); }
+
+  async function post() {
+    const body = {
+      sessionId: session.id, gwRef: session.gwRef, gwTstamp: ts(),
+      msisdn: $('msisdn').value.trim(), networkCode: $('network').value, serviceCode: '311',
+      userInput: session.inputs.join('*'), serviceId: 'simulator', tenantId: 'simulator'
+    };
+    $('screen').textContent = '...';
+    try {
+      const res = await fetch('/api/ussd', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await res.json();
+      $('screen').textContent = data.text || JSON.stringify(data);
+      $('meta').textContent = 'sessionId ' + session.id + ' · appRef ' + (data.appRef || '-') + ' · ' + (data.continueSession === 1 ? 'continue' : 'END');
+      if (data.continueSession !== 1) session = null;
+    } catch (e) {
+      $('screen').textContent = 'Request failed: ' + e.message;
+    }
+  }
+
+  $('dial').onclick = () => { session = { id: String(Date.now()), gwRef: uuid(), inputs: [] }; post(); };
+  $('send').onclick = () => {
+    if (!session) { $('screen').textContent = 'Session ended. Dial *311# again.'; return; }
+    const v = $('reply').value.trim(); if (!v) return;
+    session.inputs.push(v); $('reply').value = ''; post();
+  };
+  $('reply').addEventListener('keydown', e => { if (e.key === 'Enter') $('send').click(); });
+  $('cancel').onclick = () => { session = null; $('screen').textContent = 'Cancelled.'; $('meta').textContent = ''; };
+</script>
+</body>
+</html>
