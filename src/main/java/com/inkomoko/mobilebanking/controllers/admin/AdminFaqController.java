@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-/** Help / FAQ content management — changes show on *311# immediately, no release needed. */
+/** Help / FAQ content management — changes show on USSD immediately, no release needed. */
 @RestController
 @RequestMapping("/api/admin/faqs")
 @Tag(name = "Admin - Help/FAQ")

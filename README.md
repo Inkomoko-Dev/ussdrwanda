@@ -1,4 +1,4 @@
-# Inkomoko USSD Client Self-Service Platform (*311#)
+# Inkomoko USSD Client Self-Service Platform (*662*105# pilot, *311# later)
 
 Spring Boot 4 / Java 21 / PostgreSQL. The service implements the menu from the FDI Technical Proposal (§3.3). It connects to the FDI USSD gateway through the JSON contract in *FDI USSD Gateway Integration*. The code structure follows the `docs/sample-ussd` classes: a single `UssdController`, a `UssdSession` state row, and per-service menu classes under `utils/menus`.
 
@@ -24,10 +24,30 @@ By default Fineract, the payment gateway and SMS run in **mock** mode (`inkomoko
 
 A mock payment confirms automatically after 5 s. Amounts ending in **13** (e.g. 1013) fail, so you can test the failure path. SMS messages are written to the log.
 
+## Gateway request format
+
+The FDI gateway POSTs the full dial string on every step. Each answer is appended with `*`, so the last segment is the latest answer:
+
+```json
+{ "sessionId": "1744384620034994445", "gwRef": "1744384620049945|250788499473|20250411", "gwTstamp": "",
+  "networkCode": "RW|MTN", "serviceCode": "RW|MTN|662|105", "userInput": "*662*105*1*1#",
+  "serviceId": "...", "msisdn": "250785642275", "tenantId": "..." }
+```
+
+| userInput | Answers | Latest |
+|---|---|---|
+| `*662*105#` | none, new session | shows the consent screen |
+| `*662*105*1#` | `1` | `1` |
+| `*662*105*1*1#` | `1, 1` | `1` |
+
+**Service code:** `inkomoko.ussd.service-code` (env `USSD_SERVICE_CODE`, `USSD_SERVICE_CODE_STAGING` on staging) is `662*105` for the pilot. Change it to `311` once Inkomoko's shortcode is configured; no code change is needed. The gateway's `serviceCode` (`RW|MTN|662|105` → `662*105`) must match it, or the request is rejected with HTTP 400.
+
+**Retries:** a repeated identical `userInput` in the same session is a gateway retry. The previous screen is replayed instead of being processed twice.
+
 ## USSD flow
 
 ```
-*311# → Screen 0 consent (1 Continue / 2 Exit)
+*662*105# → Screen 0 consent (1 Continue / 2 Exit)
       → Screen 1 language (1 Kinyarwanda / 2 English / 3 Francais)
       → MSISDN matched to Fineract client (not registered / inactive → end)
       → Screen 2a PIN setup + confirm (first time)  |  Screen 2b PIN entry (3 attempts → locked)

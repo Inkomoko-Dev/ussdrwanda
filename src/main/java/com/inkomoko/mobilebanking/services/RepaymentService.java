@@ -202,7 +202,7 @@ public class RepaymentService {
                         .orElseGet(() -> fineract.postRepayment(t.getLoanId(), t.getAmount(),
                                 DateUtility.todayKigali(), t.getReference(),
                                 t.getTelecomRef() != null ? t.getTelecomRef() : t.getReference(),
-                                "USSD *311# MoMo repayment " + (t.getTelecom() == null ? "" : t.getTelecom())));
+                                "USSD MoMo repayment " + (t.getTelecom() == null ? "" : t.getTelecom())));
                 t.setFineractTxnId(txnId);
                 t.setStatus(ETransactionStatus.POSTED);
                 t.setPostedAt(now);

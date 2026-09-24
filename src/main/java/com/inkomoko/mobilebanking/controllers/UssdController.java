@@ -35,10 +35,13 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * Single USSD entry point for Inkomoko *311#, called by the FDI (Efashe) USSD gateway.
+ * Single USSD entry point for Inkomoko, called by the FDI (Efashe) USSD gateway.
+ * Service code is configurable: *662*105# during the pilot, *311# once Inkomoko's shortcode is live.
  *
  * POST /api/ussd   (JSON — see FDI USSD Gateway Integration document)
  *   in : sessionId, gwRef, gwTstamp, msisdn, networkCode, serviceCode, userInput, serviceId, tenantId
+ *        e.g. serviceCode "RW|MTN|662|105", networkCode "RW|MTN", userInput "*662*105*1*1#"
+ *        (full dial string with all answers so far; the last segment is the latest answer)
  *   out: sessionId, gwRef, appRef, appTstamp, text, continueSession (1 = continue, 0 = end)
  *
  * Flow (proposal §3.3):
@@ -47,7 +50,7 @@ import java.util.regex.Pattern;
  */
 @RestController
 @RequestMapping("/api/ussd")
-@Tag(name = "USSD", description = "Inkomoko *311# USSD endpoint (FDI gateway)")
+@Tag(name = "USSD", description = "Inkomoko USSD endpoint (FDI gateway)")
 @RequiredArgsConstructor
 @Slf4j
 public class UssdController {
@@ -86,7 +89,7 @@ public class UssdController {
     // ══════════════════════════════════════════════════════════════════════
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "Handle USSD request", description = "Called by the FDI USSD gateway on every step of a *311# session")
+    @Operation(summary = "Handle USSD request", description = "Called by the FDI USSD gateway on every step of a session")
     public ResponseEntity<UssdResponse> handle(@RequestBody UssdRequest req) {
         long started = System.nanoTime();
 
@@ -128,7 +131,10 @@ public class UssdController {
     // ══════════════════════════════════════════════════════════════════════
 
     private Processed process(UssdRequest req, String msisdn, long started) {
-        List<String> segments = UssdInputParser.segments(req.getUserInput(), props.getUssd().getServiceCode());
+        // Strip the code the gateway says was dialled (e.g. "RW|MTN|662|105" → 662*105), else the configured one.
+        String dialled = UssdInputParser.normalizeServiceCode(req.getServiceCode());
+        String code = dialled.isEmpty() ? props.getUssd().getServiceCode() : dialled;
+        List<String> segments = UssdInputParser.segments(req.getUserInput(), code);
         String rawInput = req.getUserInput() == null ? "" : req.getUserInput().trim();
 
         Optional<UssdSession> existing = sessionRepo.findBySessionIdAndMsisdn(req.getSessionId(), msisdn);
@@ -195,7 +201,7 @@ public class UssdController {
         s.setNetworkCode(req.getNetworkCode());
         s.setLevel(0);
         s.setLanguage(languagePreferenceService.preferredLanguage(msisdn));
-        // Ignore shortcut digits dialled with the code (e.g. *311*1#): every session starts at consent.
+        // Ignore shortcut digits dialled with the code (e.g. *662*105*1#): every session starts at consent.
         s.setProcessedInputs(initialSegments);
         s.setCreatedAt(now);
         s.setUpdatedAt(now);
@@ -438,12 +444,11 @@ public class UssdController {
         if (req.getUserInput() != null && req.getUserInput().length() > MAX_INPUT_LENGTH) {
             return "userInput too long";
         }
-        String code = props.getUssd().getServiceCode();
-        if (req.getServiceCode() != null && !req.getServiceCode().isBlank() && code != null && !code.isBlank()) {
-            List<String> given = UssdInputParser.segments("*" + req.getServiceCode().replace("#", "") + "#", null);
-            if (given.isEmpty() || !given.get(0).equals(code.replace("*", "").replace("#", ""))) {
-                return "unexpected serviceCode";
-            }
+        // Gateway sends e.g. "RW|MTN|662|105"; it must match inkomoko.ussd.service-code (662*105, later 311).
+        String expected = UssdInputParser.normalizeServiceCode(props.getUssd().getServiceCode());
+        String given = UssdInputParser.normalizeServiceCode(req.getServiceCode());
+        if (!expected.isEmpty() && !given.isEmpty() && !given.equals(expected)) {
+            return "unexpected serviceCode " + given;
         }
         return null;
     }

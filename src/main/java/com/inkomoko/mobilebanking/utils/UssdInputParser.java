@@ -7,9 +7,14 @@ import java.util.List;
 /**
  * Extracts user answers from the gateway's {@code userInput}.
  *
- * The FDI gateway sends an empty string on the first request and afterwards the cumulative
- * input joined with '*'. It may also include the dial string (e.g. "*311*1*2#" or the sample
- * "*662*101*1#" with serviceCode "662*101"); in that case the service-code segments are removed.
+ * The FDI gateway sends the full dial string, with every answer so far appended:
+ *
+ *   serviceCode "RW|MTN|662|105", userInput "*662*105#"      → []          (first request)
+ *   serviceCode "RW|MTN|662|105", userInput "*662*105*1#"    → ["1"]
+ *   serviceCode "RW|MTN|662|105", userInput "*662*105*1*1#"  → ["1", "1"]
+ *
+ * The service-code segments ("662*105", later "311") are removed; the last remaining segment
+ * is the user's latest answer. A plain cumulative form without the code ("1*1") is also accepted.
  */
 public final class UssdInputParser {
 
@@ -40,11 +45,20 @@ public final class UssdInputParser {
         return parts;
     }
 
+    /**
+     * Normalises any service-code notation to "662*105" / "311":
+     * "RW|MTN|662|105" → "662*105", "*662*105#" → "662*105", "311" → "311".
+     * Non-numeric parts (country, network) are dropped. Returns "" if there are no digits.
+     */
+    public static String normalizeServiceCode(String serviceCode) {
+        if (serviceCode == null) return "";
+        return String.join("*", codeSegments(serviceCode));
+    }
+
     static List<String> codeSegments(String serviceCode) {
-        String c = serviceCode.trim();
-        while (c.startsWith("*")) c = c.substring(1);
-        if (c.endsWith("#")) c = c.substring(0, c.length() - 1);
-        if (c.isEmpty()) return List.of();
-        return Arrays.stream(c.split("\\*")).filter(x -> !x.isEmpty()).toList();
+        if (serviceCode == null) return List.of();
+        return Arrays.stream(serviceCode.trim().split("[|*#\\s]+"))
+                .filter(x -> x.matches("[0-9]+"))
+                .toList();
     }
 }

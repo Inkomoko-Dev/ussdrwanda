@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>*311# Simulator</title>
+<title>USSD Simulator</title>
 <style>
   :root { --bg:#f4f5f7; --card:#fff; --ink:#1d2330; --muted:#6b7280; --accent:#0a7d4f; --line:#d9dde3; }
   * { box-sizing:border-box; }
@@ -24,19 +24,21 @@
 </head>
 <body>
 <main>
-  <h1>Inkomoko *311# simulator</h1>
-  <p class="hint">Sends FDI-gateway style JSON to <code>/api/ussd</code>. Mock test numbers: 250788000001, 250788000002, 250722000003.</p>
+  <h1>Inkomoko USSD simulator</h1>
+  <p class="hint">Sends the same JSON as the FDI gateway to <code>/api/ussd</code> (full dial string in <code>userInput</code>, e.g. <code>*662*105*1*1#</code>). Mock test numbers: 250788000001, 250788000002, 250722000003.</p>
 
   <div class="card">
     <label for="msisdn">Phone (MSISDN)</label>
     <input id="msisdn" value="250788000001">
     <label for="network">Network</label>
-    <select id="network"><option>MTN-RW</option><option>AIRTEL-RW</option></select>
-    <div class="row"><button id="dial">Dial *311#</button></div>
+    <select id="network"><option value="MTN">MTN</option><option value="AIRTEL">Airtel</option></select>
+    <label for="code">Service code</label>
+    <input id="code" value="662*105">
+    <div class="row"><button id="dial">Dial</button></div>
   </div>
 
   <div class="card">
-    <div id="screen" class="screen">Press "Dial *311#" to start.</div>
+    <div id="screen" class="screen">Press "Dial" to start.</div>
     <div class="row">
       <input id="reply" placeholder="Your reply" inputmode="numeric" autocomplete="off">
     </div>
@@ -51,18 +53,16 @@
   let session = null;
   const $ = (id) => document.getElementById(id);
 
-  function uuid() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-      const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-    });
-  }
-  function ts() { return new Date().toISOString().replace('T', ' ').substring(0, 19); }
 
   async function post() {
+    // Same shape as the FDI gateway: serviceCode "RW|MTN|662|105", userInput "*662*105*1*1#"
+    const code = session.code;
     const body = {
-      sessionId: session.id, gwRef: session.gwRef, gwTstamp: ts(),
-      msisdn: $('msisdn').value.trim(), networkCode: $('network').value, serviceCode: '311',
-      userInput: session.inputs.join('*'), serviceId: 'simulator', tenantId: 'simulator'
+      sessionId: session.id, gwRef: session.gwRef, gwTstamp: '',
+      networkCode: 'RW|' + session.network,
+      serviceCode: 'RW|' + session.network + '|' + code.split('*').join('|'),
+      userInput: '*' + [code].concat(session.inputs).join('*') + '#',
+      serviceId: 'simulator', msisdn: $('msisdn').value.trim(), tenantId: 'simulator'
     };
     $('screen').textContent = '...';
     try {
@@ -76,9 +76,14 @@
     }
   }
 
-  $('dial').onclick = () => { session = { id: String(Date.now()), gwRef: uuid(), inputs: [] }; post(); };
+  $('dial').onclick = () => {
+    const code = $('code').value.trim().replace(/^\*+|#$/g, '');
+    const id = String(Date.now()) + String(Math.floor(Math.random() * 1e6));
+    session = { id, gwRef: id + '|' + $('msisdn').value.trim() + '|sim', inputs: [], code, network: $('network').value };
+    post();
+  };
   $('send').onclick = () => {
-    if (!session) { $('screen').textContent = 'Session ended. Dial *311# again.'; return; }
+    if (!session) { $('screen').textContent = 'Session ended. Dial again.'; return; }
     const v = $('reply').value.trim(); if (!v) return;
     session.inputs.push(v); $('reply').value = ''; post();
   };

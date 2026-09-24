@@ -26,7 +26,7 @@ public class InkomokoProperties {
 
     @Getter @Setter
     public static class Ussd {
-        private String serviceCode = "311";
+        private String serviceCode = "662*105";
         private int sessionTimeoutSeconds = 60;
         private int maxPinAttempts = 3;
         private int pinLength = 4;

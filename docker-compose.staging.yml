@@ -13,6 +13,8 @@ services:
       - SERVER_PORT=${APP_PORT:-8093}
       - TZ=Africa/Kigali
       - LOGGING_FILE_NAME=/opt/tomcat/logs/inkomoko-ussd.log
+      # USSD code: 662*105 (pilot) -> 311 when Inkomoko's shortcode is live
+      - USSD_SERVICE_CODE=${USSD_SERVICE_CODE_STAGING:-662*105}
       # Database
       - SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/${DB_NAME_STAGING:-inkomoko_db}
       - SPRING_DATASOURCE_USERNAME=${DB_USERNAME_STAGING:-postgres}
