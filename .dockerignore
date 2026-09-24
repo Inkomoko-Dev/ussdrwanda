@@ -1,0 +1,49 @@
+# ============================================================================
+# Docker ignore for Inkomoko USSD - keeps the build context small
+# ============================================================================
+
+# Git / CI
+.git/
+.gitignore
+.gitattributes
+.gitlab-ci.yml
+.gitlab/
+.github/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+
+# Build artifacts (built inside the image)
+target/
+build/
+*.jar
+*.war
+*.class
+.m2/
+
+# Logs
+logs/
+*.log
+
+# Docs / compose files
+*.md
+docs/
+docker-compose*.yml
+Dockerfile
+
+# Tests are not needed in the image (build uses -DskipTests)
+src/test/
+
+# Misc
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store

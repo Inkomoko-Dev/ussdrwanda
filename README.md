@@ -78,6 +78,24 @@ The repayment reference is also sent to Fineract as the transaction `externalId`
 * If a number is reassigned to a different Fineract client, the old PIN is invalidated.
 * Admin API: API key plus operator header. **Replace with SSO/RBAC before production.**
 
+## CI/CD (GitLab)
+
+This pipeline follows the loan-service pipeline. It uses the same shell-executor runner tags and Docker BuildKit registry cache, and deploys with docker compose (`network_mode: host`).
+
+| Branch | Jobs (runner tag) | Target |
+|---|---|---|
+| `master` | `build` -> `deploy` (`staging`) | host PostgreSQL `localhost:5432/inkomoko_db`, created if missing |
+| `main` | `build-prod` -> `deploy-prod` (`production`) | `DB_HOST` (default `10.0.0.4`) `/inkomoko_db`, which must already exist |
+
+* **Image:** `registry.gitlab.com/efashe2/efashe-wallet/inkomoko-ussd:<branch-slug>`. The pipeline also pushes `:latest` and a tag for the short commit SHA.
+* **Container:** `inkomoko-ussd-service`, listening on port **8093** (`APP_PORT` in `.gitlab-ci.yml`; loan-service uses 8089). The health check is `/actuator/health`.
+* **Staging variables:** use the `_STAGING` suffix, e.g. `DB_PASSWORD_STAGING` or `FINERACT_MODE_STAGING`. Integrations default to `mock`. When a mode is set to `live`, its credentials are required.
+* **Production variables:**
+  * Always required: `DB_USERNAME`, `DB_PASSWORD`, `ADMIN_API_KEYS`, `PAYMENT_CALLBACK_TOKEN`.
+  * Integrations default to `live`, which also requires `FINERACT_BASE_URL/USERNAME/PASSWORD`, `PAYMENT_BASE_URL/API_KEY/CALLBACK_URL` and `SMS_BASE_URL/API_KEY`.
+  * Optional: `DB_HOST`, `DB_PORT`, `DB_NAME`, `FINERACT_TENANT_ID`, `FINERACT_PAYMENT_TYPE_ID`, `SUPPORT_HELPLINE`, `*_MODE`.
+* **Logs:** written to `/opt/tomcat/logs/inkomoko-ussd.log` on the host.
+
 ## Before go-live (open items)
 
 1. **Fineract**: set `inkomoko.fineract.mode=live`, plus `base-url`, credentials and `payment-type-id`. Confirm against the sandbox that client search by mobile number (`/search?resource=clients`) and the loan status mapping (`ELoanStatus.fromFineract`) match Inkomoko's setup.

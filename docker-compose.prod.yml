@@ -1,0 +1,57 @@
+# Production: external PostgreSQL (default 10.0.0.4:5432), network_mode: host.
+# Secrets come from GitLab CI/CD variables (validated in the deploy-prod job).
+services:
+  inkomoko-ussd:
+    image: registry.gitlab.com/efashe2/efashe-wallet/inkomoko-ussd:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      cache_from:
+        - registry.gitlab.com/efashe2/efashe-wallet/inkomoko-ussd:${IMAGE_TAG:-latest}
+    environment:
+      - SERVER_PORT=${APP_PORT:-8093}
+      - TZ=Africa/Kigali
+      - LOGGING_FILE_NAME=/opt/tomcat/logs/inkomoko-ussd.log
+      # Database
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://${DB_HOST:-10.0.0.4}:${DB_PORT:-5432}/${DB_NAME:-inkomoko_db}
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      # Support
+      - SUPPORT_HELPLINE=${SUPPORT_HELPLINE:-+250 XXX XXX XXX}
+      # Fineract
+      - FINERACT_MODE=${FINERACT_MODE:-live}
+      - FINERACT_BASE_URL=${FINERACT_BASE_URL:-}
+      - FINERACT_TENANT_ID=${FINERACT_TENANT_ID:-default}
+      - FINERACT_USERNAME=${FINERACT_USERNAME:-}
+      - FINERACT_PASSWORD=${FINERACT_PASSWORD:-}
+      - FINERACT_PAYMENT_TYPE_ID=${FINERACT_PAYMENT_TYPE_ID:-1}
+      # Payment gateway (MoMo / Airtel Money)
+      - PAYMENT_MODE=${PAYMENT_MODE:-live}
+      - PAYMENT_BASE_URL=${PAYMENT_BASE_URL:-}
+      - PAYMENT_API_KEY=${PAYMENT_API_KEY:-}
+      - PAYMENT_MERCHANT_CODE=${PAYMENT_MERCHANT_CODE:-INKOMOKO}
+      - PAYMENT_CALLBACK_URL=${PAYMENT_CALLBACK_URL:-}
+      - PAYMENT_CALLBACK_TOKEN=${PAYMENT_CALLBACK_TOKEN}
+      # SMS
+      - SMS_MODE=${SMS_MODE:-live}
+      - SMS_BASE_URL=${SMS_BASE_URL:-}
+      - SMS_API_KEY=${SMS_API_KEY:-}
+      - SMS_SENDER_ID=${SMS_SENDER_ID:-INKOMOKO}
+      # Back-office API
+      - ADMIN_API_KEYS=${ADMIN_API_KEYS}
+    volumes:
+      - /opt/tomcat/logs:/opt/tomcat/logs
+    network_mode: host
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:$${SERVER_PORT:-8093}/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    restart: unless-stopped
+    container_name: inkomoko-ussd-service
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

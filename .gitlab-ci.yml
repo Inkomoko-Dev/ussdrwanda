@@ -1,0 +1,288 @@
+# ============================================================================
+# GitLab CI/CD - Inkomoko USSD (*311#)
+# ============================================================================
+# Mirrors the loan-service pipeline (shell executor runners):
+#   master -> build (tag: staging)     -> deploy      (tag: staging)
+#   main   -> build-prod (tag: production) -> deploy-prod (tag: production)
+#
+# - Docker BuildKit + registry inline cache, Maven cache mount in Dockerfile
+# - Deploys pre-built images with docker compose (network_mode: host)
+# - Staging uses host PostgreSQL (localhost:5432); production uses DB_HOST (default 10.0.0.4)
+#
+# Docker Client/Daemon must support API 1.44+ (Docker 24.0+).
+# ============================================================================
+
+variables:
+  CI_REGISTRY_IMAGE: registry.gitlab.com/efashe2/efashe-wallet/inkomoko-ussd
+  IMAGE_TAG: $CI_COMMIT_SHA
+  # Host port of the service (network_mode: host). Must not clash with other
+  # services on the runner hosts (loan-service uses 8089).
+  APP_PORT: "8093"
+  CONTAINER_NAME: inkomoko-ussd-service
+
+  DOCKER_BUILDKIT: 1
+  BUILDKIT_PROGRESS: plain
+  DOCKER_DRIVER: overlay2
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
+  # Keep root-owned leftovers from breaking checkout on shell executors.
+  GIT_CLEAN_FLAGS: "-ffdx -e .m2/ -e target/"
+
+stages:
+  - build
+  - build-prod
+  - deploy
+  - deploy-prod
+
+# ============================================================================
+# Reusable snippets
+# ============================================================================
+.docker_login: &docker_login
+  - echo "Docker registry login"
+  - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+
+.build_image: &build_image
+  - echo "Pulling cache layers from registry..."
+  - docker pull $CI_REGISTRY_IMAGE:buildcache-builder || true
+  - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG || true
+  - docker pull $CI_REGISTRY_IMAGE:latest || true
+  - |
+    # Only include cache refs that actually exist; missing refs make buildx fail.
+    CACHE_FROM_ARGS=""
+    for ref in buildcache-builder "$CI_COMMIT_REF_SLUG" latest; do
+      if docker manifest inspect "$CI_REGISTRY_IMAGE:$ref" >/dev/null 2>&1; then
+        CACHE_FROM_ARGS="$CACHE_FROM_ARGS --cache-from type=registry,ref=$CI_REGISTRY_IMAGE:$ref"
+      else
+        echo "Cache ref $CI_REGISTRY_IMAGE:$ref not found; skipping."
+      fi
+    done
+    docker buildx build \
+      $CACHE_FROM_ARGS \
+      --cache-to type=inline \
+      --tag $CI_REGISTRY_IMAGE:buildcache-builder \
+      --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG \
+      --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA \
+      --tag $CI_REGISTRY_IMAGE:latest \
+      --provenance=false \
+      --sbom=false \
+      --push \
+      --progress=plain \
+      .
+  - echo "Build completed - pushed $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
+  - df -h / || true
+
+.compose_setup: &compose_setup
+  - |
+    if docker compose version >/dev/null 2>&1; then
+      echo "Using docker compose (v2 plugin)"
+      echo 'docker compose' > /tmp/inkomoko-compose-cmd.txt
+    else
+      if ! command -v docker-compose >/dev/null 2>&1; then
+        echo "Installing docker-compose..."
+        mkdir -p /home/gitlab-runner/bin
+        curl -L "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-$(uname -s)-$(uname -m)" -o /home/gitlab-runner/bin/docker-compose
+        chmod +x /home/gitlab-runner/bin/docker-compose
+      fi
+      echo "Using docker-compose (standalone)"
+      echo 'docker-compose' > /tmp/inkomoko-compose-cmd.txt
+    fi
+
+.wait_healthy: &wait_healthy
+  - |
+    echo "Waiting for $CONTAINER_NAME on port $APP_PORT to be healthy..."
+    for i in $(seq 1 90); do
+      http_code="$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${APP_PORT}/actuator/health || true)"
+      if [ "$http_code" = "200" ]; then
+        echo "Inkomoko USSD service is healthy!"
+        break
+      fi
+      if [ $i -eq 90 ]; then
+        echo "Service failed to become healthy (last HTTP ${http_code:-<none>})"
+        docker inspect --format='status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}<none>{{end}} restarts={{.RestartCount}} oomKilled={{.State.OOMKilled}} exitCode={{.State.ExitCode}}' $CONTAINER_NAME 2>/dev/null || true
+        docker logs $CONTAINER_NAME --tail 200
+        exit 1
+      fi
+      if [ $((i % 10)) -eq 0 ]; then
+        echo "Waiting for health check... (${i}/90) (last HTTP ${http_code:-<none>})"
+      fi
+      sleep 2
+    done
+
+.retry_build: &retry_build
+  max: 2
+  when:
+    - runner_system_failure
+    - stuck_or_timeout_failure
+
+.retry_deploy: &retry_deploy
+  max: 1
+  when:
+    - runner_system_failure
+    - stuck_or_timeout_failure
+
+# ============================================================================
+# Build (staging) - master
+# ============================================================================
+build:
+  stage: build
+  tags:
+    - staging
+  before_script:
+    - echo "Starting Docker build (staging)"
+    - docker version
+    - *docker_login
+    # Host daemon BuildKit refreshes registry tokens and keeps --mount=type=cache volumes.
+    - docker buildx use default
+  script:
+    - *build_image
+  only:
+    - master
+  retry: *retry_build
+
+# ============================================================================
+# Build (production) - main
+# ============================================================================
+build-prod:
+  stage: build-prod
+  tags:
+    - production
+  before_script:
+    - echo "Starting Docker build (production)"
+    - docker version
+    - *docker_login
+    - docker buildx use default
+  script:
+    - *build_image
+  only:
+    - main
+  retry: *retry_build
+
+# ============================================================================
+# Deploy (staging) - master
+# ============================================================================
+deploy:
+  stage: deploy
+  tags:
+    - staging
+  before_script:
+    - echo "Preparing for staging deployment"
+    # Host Postgres on the staging runner (network_mode: host)
+    - export DB_NAME_STAGING="${DB_NAME_STAGING:-inkomoko_db}"
+    - export DB_USERNAME_STAGING="${DB_USERNAME_STAGING:-postgres}"
+    - export DB_PASSWORD_STAGING="${DB_PASSWORD_STAGING:-postgres}"
+    - echo "DB=localhost:5432/${DB_NAME_STAGING} user=${DB_USERNAME_STAGING} password=***"
+    - |
+      # Integrations default to mock on staging; when switched to live, require credentials.
+      set -e
+      require() { for v in "$@"; do eval "val=\${$v:-}"; if [ -z "$val" ]; then echo "ERROR: $v is not set (GitLab CI/CD variables)"; exit 1; fi; done; }
+      echo "FINERACT_MODE=${FINERACT_MODE_STAGING:-mock} PAYMENT_MODE=${PAYMENT_MODE_STAGING:-mock} SMS_MODE=${SMS_MODE_STAGING:-mock}"
+      [ "${FINERACT_MODE_STAGING:-mock}" = "live" ] && require FINERACT_BASE_URL_STAGING FINERACT_USERNAME_STAGING FINERACT_PASSWORD_STAGING
+      [ "${PAYMENT_MODE_STAGING:-mock}" = "live" ] && require PAYMENT_BASE_URL_STAGING PAYMENT_API_KEY_STAGING PAYMENT_CALLBACK_URL_STAGING PAYMENT_CALLBACK_TOKEN_STAGING
+      [ "${SMS_MODE_STAGING:-mock}" = "live" ] && require SMS_BASE_URL_STAGING SMS_API_KEY_STAGING
+      true
+    - docker container prune -f --filter "until=24h" || true
+    - *docker_login
+    - *compose_setup
+  script:
+    - export PATH="/home/gitlab-runner/bin:$PATH"
+    - echo "Checking host PostgreSQL and creating ${DB_NAME_STAGING} if missing..."
+    - |
+      export PGPASSWORD="${DB_PASSWORD_STAGING}"
+      for i in $(seq 1 30); do
+        if command -v pg_isready >/dev/null 2>&1 && pg_isready -h localhost -p 5432 -U "${DB_USERNAME_STAGING}" >/dev/null 2>&1; then
+          echo "Database is ready"; break
+        elif command -v nc >/dev/null 2>&1 && nc -z localhost 5432 2>/dev/null; then
+          echo "Database port is reachable"; break
+        fi
+        if [ $i -eq 30 ]; then echo "Error: cannot reach PostgreSQL at localhost:5432"; exit 1; fi
+        echo "Waiting for database... ($i/30)"; sleep 2
+      done
+      if command -v psql >/dev/null 2>&1; then
+        if psql -h localhost -p 5432 -U "${DB_USERNAME_STAGING}" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME_STAGING}'" | grep -q 1; then
+          echo "Database ${DB_NAME_STAGING} already exists"
+        else
+          psql -h localhost -p 5432 -U "${DB_USERNAME_STAGING}" -d postgres -c "CREATE DATABASE \"${DB_NAME_STAGING}\";"
+          echo "Database ${DB_NAME_STAGING} created"
+        fi
+      else
+        echo "psql not on PATH; assuming ${DB_NAME_STAGING} already exists"
+      fi
+    - |
+      DOCKER_COMPOSE_CMD=$(cat /tmp/inkomoko-compose-cmd.txt 2>/dev/null || echo "docker-compose")
+      export IMAGE_TAG=$CI_COMMIT_REF_SLUG
+      echo "Deploying $CI_REGISTRY_IMAGE:$IMAGE_TAG to staging (port $APP_PORT)"
+      $DOCKER_COMPOSE_CMD -f docker-compose.staging.yml pull inkomoko-ussd
+      $DOCKER_COMPOSE_CMD -f docker-compose.staging.yml down --remove-orphans || true
+      $DOCKER_COMPOSE_CMD -f docker-compose.staging.yml up -d --no-build
+    - *wait_healthy
+    - |
+      DOCKER_COMPOSE_CMD=$(cat /tmp/inkomoko-compose-cmd.txt 2>/dev/null || echo "docker-compose")
+      $DOCKER_COMPOSE_CMD -f docker-compose.staging.yml ps || true
+    - docker image prune -f --filter "until=168h" || true
+    - echo "Staging deployment completed successfully"
+  environment:
+    name: staging
+  dependencies:
+    - build
+  only:
+    - master
+  retry: *retry_deploy
+
+# ============================================================================
+# Deploy (production) - main
+# ============================================================================
+deploy-prod:
+  stage: deploy-prod
+  tags:
+    - production
+  before_script:
+    - echo "Preparing for production deployment"
+    - export DB_HOST="${DB_HOST:-10.0.0.4}"
+    - export DB_PORT="${DB_PORT:-5432}"
+    - export DB_NAME="${DB_NAME:-inkomoko_db}"
+    - |
+      set -e
+      require() { for v in "$@"; do eval "val=\${$v:-}"; if [ -z "$val" ]; then echo "ERROR: $v is not set (GitLab CI/CD variables)"; exit 1; fi; done; }
+      require DB_USERNAME DB_PASSWORD ADMIN_API_KEYS PAYMENT_CALLBACK_TOKEN
+      echo "FINERACT_MODE=${FINERACT_MODE:-live} PAYMENT_MODE=${PAYMENT_MODE:-live} SMS_MODE=${SMS_MODE:-live}"
+      [ "${FINERACT_MODE:-live}" = "live" ] && require FINERACT_BASE_URL FINERACT_USERNAME FINERACT_PASSWORD
+      [ "${PAYMENT_MODE:-live}" = "live" ] && require PAYMENT_BASE_URL PAYMENT_API_KEY PAYMENT_CALLBACK_URL
+      [ "${SMS_MODE:-live}" = "live" ] && require SMS_BASE_URL SMS_API_KEY
+      true
+    - echo "DB=${DB_HOST}:${DB_PORT}/${DB_NAME} user=${DB_USERNAME} password=***"
+    - docker container prune -f --filter "until=24h" || true
+    - *docker_login
+    - *compose_setup
+    - |
+      echo "Checking external database connectivity..."
+      if command -v pg_isready >/dev/null 2>&1; then
+        pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" && echo "Database is accessible" \
+          || echo "Warning: pg_isready could not verify the database, continuing..."
+      elif command -v nc >/dev/null 2>&1; then
+        if nc -z "$DB_HOST" "$DB_PORT" 2>/dev/null; then echo "Database port is accessible"
+        else echo "Error: cannot reach database at $DB_HOST:$DB_PORT"; exit 1; fi
+      else
+        echo "Warning: pg_isready/nc not available; skipping DB check"
+      fi
+  script:
+    - export PATH="/home/gitlab-runner/bin:$PATH"
+    - |
+      DOCKER_COMPOSE_CMD=$(cat /tmp/inkomoko-compose-cmd.txt 2>/dev/null || echo "docker-compose")
+      export IMAGE_TAG=$CI_COMMIT_REF_SLUG
+      echo "Deploying $CI_REGISTRY_IMAGE:$IMAGE_TAG to production (port $APP_PORT)"
+      $DOCKER_COMPOSE_CMD -f docker-compose.prod.yml pull inkomoko-ussd
+      $DOCKER_COMPOSE_CMD -f docker-compose.prod.yml down --remove-orphans || true
+      $DOCKER_COMPOSE_CMD -f docker-compose.prod.yml up -d --no-build
+    - *wait_healthy
+    - |
+      DOCKER_COMPOSE_CMD=$(cat /tmp/inkomoko-compose-cmd.txt 2>/dev/null || echo "docker-compose")
+      $DOCKER_COMPOSE_CMD -f docker-compose.prod.yml ps || true
+    - docker image prune -f --filter "until=168h" || true
+    - echo "Production deployment completed successfully"
+  environment:
+    name: production
+  dependencies:
+    - build-prod
+  only:
+    - main
+  retry: *retry_deploy
