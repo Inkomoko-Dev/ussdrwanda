@@ -22,7 +22,10 @@ services:
       # Support
       - SUPPORT_HELPLINE=${SUPPORT_HELPLINE_STAGING:-+250 XXX XXX XXX}
       # Fineract
-      - FINERACT_MODE=${FINERACT_MODE_STAGING:-mock}
+      - FINERACT_MODE=${FINERACT_MODE_STAGING:-demo}
+      # Demo mode: phones registered as demo clients at startup (comma-separated);
+      # add more at runtime with POST /api/admin/demo/clients
+      - DEMO_ALLOWED_MSISDNS=${DEMO_ALLOWED_MSISDNS_STAGING:-250788683008,250785642275}
       - FINERACT_BASE_URL=${FINERACT_BASE_URL_STAGING:-https://fineract-sandbox.example/fineract-provider/api/v1}
       - FINERACT_TENANT_ID=${FINERACT_TENANT_ID_STAGING:-default}
       - FINERACT_USERNAME=${FINERACT_USERNAME_STAGING:-mifos}

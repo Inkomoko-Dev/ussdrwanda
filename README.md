@@ -12,17 +12,68 @@ createdb -U postgres inkomoko_db          # user/password: postgres/postgres (ap
 * USSD simulator: http://localhost:8080/simulator.html
 * Swagger UI: http://localhost:8080/swagger-ui.html
 
-By default Fineract, the payment gateway and SMS run in **mock** mode (`inkomoko.*.mode=mock`), so the whole flow works without external systems:
+By default core banking runs in **demo** mode (`inkomoko.fineract.mode=demo`), and the payment gateway and SMS run in **mock** mode. The whole flow works without external systems:
 
-| Test phone     | Mock client                                               |
+| Test phone     | Demo client (seeded by `V3__demo_core_banking.sql`)        |
 |----------------|-----------------------------------------------------------|
-| 250788000001   | 1 active loan (+1 settled), first dial goes through PIN setup |
+| 250788000001   | 1 active loan (+1 settled); the first dial goes through PIN setup |
 | 250788000002   | 2 repayable loans (one in arrears) + 1 under review       |
 | 250722000003   | Airtel number, 1 approved loan pending disbursement       |
 | 250788000004   | inactive client                                           |
-| any other      | not registered                                            |
+| `DEMO_ALLOWED_MSISDNS` | registered at startup, each with an active loan and a loan in arrears |
+| any other      | not registered: the session ends right after the language screen |
 
-A mock payment confirms automatically after 5 s. Amounts ending in **13** (e.g. 1013) fail, so you can test the failure path. SMS messages are written to the log.
+A mock payment confirms automatically after 5 s. Amounts ending in **13** (e.g. 1013) fail, so you can test the failure path. SMS messages are written to the log. In demo mode, repayments reduce the demo loan balances exactly as a Fineract posting would.
+
+## Demo data API (pilot only)
+
+These endpoints are only available while `inkomoko.fineract.mode` is not `live`. Like the other admin endpoints, they need the `X-API-KEY` and `X-Admin-User` headers.
+
+```bash
+H='-H "X-API-KEY: $KEY" -H "X-Admin-User: stanley" -H "Content-Type: application/json"'
+# allow a phone (adds an active loan + a loan in arrears unless "sampleLoans": false)
+curl -X POST $BASE/api/admin/demo/clients $H -d '{"msisdn":"250788683008","displayName":"Stanley M"}'
+# custom loan
+curl -X POST $BASE/api/admin/demo/clients/250788683008/loans $H \
+  -d '{"productName":"Agri Loan","status":"ACTIVE","principalOutstanding":500000,"interestOutstanding":25000,"totalOverdue":0,"installment":45000,"nextDueDate":"2026-10-15"}'
+# change balances / status (e.g. push into arrears)
+curl -X PUT $BASE/api/admin/demo/loans/7 $H -d '{"status":"IN_ARREARS","totalOverdue":45000}'
+# repayment history line for the mini statement (applyToBalance=true also reduces the balance)
+curl -X POST $BASE/api/admin/demo/loans/7/repayments $H -d '{"amount":45000,"date":"2026-09-15"}'
+```
+
+| Method | Path | Body |
+|---|---|---|
+| GET | `/api/admin/demo/clients` | lists the allowed numbers with their loans |
+| POST | `/api/admin/demo/clients` | `msisdn`, `displayName?`, `active?`, `sampleLoans?` (default true) |
+| GET / PUT / DELETE | `/api/admin/demo/clients/{msisdn}` | PUT: `displayName?`, `active?`. DELETE also removes the loans and history |
+| POST | `/api/admin/demo/clients/{msisdn}/sample-loans` | adds the standard sample portfolio |
+| POST | `/api/admin/demo/clients/{msisdn}/loans` | `accountNo?`, `productName`, `status`, `principalOutstanding`, `interestOutstanding`, `totalOverdue`, `installment`, `nextDueDate` |
+| PUT / DELETE | `/api/admin/demo/loans/{loanId}` | PUT accepts the same fields; null fields are left unchanged |
+| GET / POST | `/api/admin/demo/loans/{loanId}/repayments` | `amount`, `date?`, `reference?`, `applyToBalance?` (default false) |
+
+The loan `status` can be `UNDER_REVIEW`, `APPROVED`, `ACTIVE`, `IN_ARREARS`, `SETTLED`, `REJECTED`, `WITHDRAWN` or `CLOSED`. To let a tester start over with a new PIN, use `POST /api/admin/pins/{msisdn}/reset`.
+
+## Demo -> production switch (*662*105# -> *311#)
+
+The demo only replaces **one component**, the core-banking adapter behind the `FineractService` interface. Everything else runs the same code in both modes, so none of the pilot work is thrown away:
+
+| Kept as-is at the switch | Swapped at the switch |
+|---|---|
+| USSD engine, screens and translations, input parsing | `DemoFineractService` -> `FineractRestService` (`FINERACT_MODE=live`) |
+| consent, language, PIN setup/lockout, sessions | mock payment gateway -> Efashe gateway (`PAYMENT_MODE=live`) |
+| repayment ledger, idempotency, reconciliation (maker/checker) | mock SMS -> Efashe SMS (`SMS_MODE=live`) |
+| audit log, FAQ admin, dashboard, CI/CD, DB schema | `USSD_SERVICE_CODE` `662*105` -> `311` |
+
+**Environments.** Staging (`master`) stays the permanent demo/UAT environment: `*662*105#`, demo mode, its own database. Production (`main`) is live only, with `*311#` and Fineract. The `deploy-prod` job refuses any `*_MODE` other than `live` unless `ALLOW_DEMO_IN_PRODUCTION=true`, and the demo endpoints don't exist there. Demo data therefore never reaches the production database.
+
+**Switch checklist:**
+1. **Fineract sandbox.** Point staging at the Fineract sandbox (`FINERACT_MODE_STAGING=live` plus the credentials) and run the same UAT scripts used for the demo. Confirm that client search by phone, the loan status mapping, next due date / installment and the repayment posting (`paymentTypeId`, `externalId`) match what the demo showed. Anything that differs is fixed in `FineractRestService` or `ELoanStatus.fromFineract`; the menus don't change.
+2. **Payments and SMS.** Switch `PAYMENT_MODE_STAGING` and `SMS_MODE_STAGING` to `live` against Efashe test credentials and test a real MoMo repayment end to end, including the callback URL.
+3. **Production variables.** Set them in GitLab: DB, Fineract, payment, SMS, `ADMIN_API_KEYS`, `PAYMENT_CALLBACK_TOKEN`, `SUPPORT_HELPLINE`. `USSD_SERVICE_CODE` defaults to `311`.
+4. **Go-live.** Merge to `main`, then ask FDI to route `*311#` to the production URL. Pilot users set their PIN again on first `*311#` dial. PINs are stored per environment, and a PIN is also reset automatically if the client ID behind a number changes.
+5. **Optional rollback.** Keep `*662*105#` pointed at staging during hypercare, so the demo stays available for training.
+6. **After go-live.** The `demo_*` tables stay empty and unused in production. They can be dropped later with a new migration once the pilot is formally closed.
 
 ## Gateway request format
 
@@ -118,7 +169,7 @@ This pipeline follows the loan-service pipeline. It uses the same shell-executor
 
 ## Before go-live (open items)
 
-1. **Fineract**: set `inkomoko.fineract.mode=live`, plus `base-url`, credentials and `payment-type-id`. Confirm against the sandbox that client search by mobile number (`/search?resource=clients`) and the loan status mapping (`ELoanStatus.fromFineract`) match Inkomoko's setup.
+1. **Fineract**: see the switch checklist above. Set `inkomoko.fineract.mode=live`, plus `base-url`, credentials and `payment-type-id`. Confirm against the sandbox that client search by mobile number (`/search?resource=clients`) and the loan status mapping (`ELoanStatus.fromFineract`) match Inkomoko's setup.
 2. **Payment gateway / SMS**: the paths and fields in `EfashePaymentGatewayService`, `EfasheSmsService` and `PaymentCallbackRequest` are provisional. Align them with the Efashe merchant API.
 3. **Content**: the helpline (`inkomoko.support.helpline`) and the FAQ office addresses (seeded by `V2__seed_faq.sql`) are placeholders. The Kinyarwanda and French wording needs native-speaker review.
 4. **Secrets**: move the DB password, API keys and callback token out of `application.properties` (use env vars or a vault).

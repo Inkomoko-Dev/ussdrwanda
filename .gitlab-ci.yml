@@ -175,8 +175,8 @@ deploy:
       # Integrations default to mock on staging; when switched to live, require credentials.
       set -e
       require() { for v in "$@"; do eval "val=\${$v:-}"; if [ -z "$val" ]; then echo "ERROR: $v is not set (GitLab CI/CD variables)"; exit 1; fi; done; }
-      echo "FINERACT_MODE=${FINERACT_MODE_STAGING:-mock} PAYMENT_MODE=${PAYMENT_MODE_STAGING:-mock} SMS_MODE=${SMS_MODE_STAGING:-mock}"
-      [ "${FINERACT_MODE_STAGING:-mock}" = "live" ] && require FINERACT_BASE_URL_STAGING FINERACT_USERNAME_STAGING FINERACT_PASSWORD_STAGING
+      echo "FINERACT_MODE=${FINERACT_MODE_STAGING:-demo} PAYMENT_MODE=${PAYMENT_MODE_STAGING:-mock} SMS_MODE=${SMS_MODE_STAGING:-mock}"
+      [ "${FINERACT_MODE_STAGING:-demo}" = "live" ] && require FINERACT_BASE_URL_STAGING FINERACT_USERNAME_STAGING FINERACT_PASSWORD_STAGING
       [ "${PAYMENT_MODE_STAGING:-mock}" = "live" ] && require PAYMENT_BASE_URL_STAGING PAYMENT_API_KEY_STAGING PAYMENT_CALLBACK_URL_STAGING PAYMENT_CALLBACK_TOKEN_STAGING
       [ "${SMS_MODE_STAGING:-mock}" = "live" ] && require SMS_BASE_URL_STAGING SMS_API_KEY_STAGING
       true
@@ -244,6 +244,16 @@ deploy-prod:
       set -e
       require() { for v in "$@"; do eval "val=\${$v:-}"; if [ -z "$val" ]; then echo "ERROR: $v is not set (GitLab CI/CD variables)"; exit 1; fi; done; }
       require DB_USERNAME DB_PASSWORD ADMIN_API_KEYS PAYMENT_CALLBACK_TOKEN
+      # Production is live-only: demo core banking / mock payments are refused unless explicitly allowed.
+      if [ "${ALLOW_DEMO_IN_PRODUCTION:-false}" != "true" ]; then
+        for pair in "FINERACT_MODE:${FINERACT_MODE:-live}" "PAYMENT_MODE:${PAYMENT_MODE:-live}" "SMS_MODE:${SMS_MODE:-live}"; do
+          if [ "${pair#*:}" != "live" ]; then
+            echo "ERROR: ${pair%%:*}=${pair#*:} in production. Set it to live (or ALLOW_DEMO_IN_PRODUCTION=true to override)."
+            exit 1
+          fi
+        done
+      fi
+      echo "USSD_SERVICE_CODE=${USSD_SERVICE_CODE:-311}"
       echo "FINERACT_MODE=${FINERACT_MODE:-live} PAYMENT_MODE=${PAYMENT_MODE:-live} SMS_MODE=${SMS_MODE:-live}"
       [ "${FINERACT_MODE:-live}" = "live" ] && require FINERACT_BASE_URL FINERACT_USERNAME FINERACT_PASSWORD
       [ "${PAYMENT_MODE:-live}" = "live" ] && require PAYMENT_BASE_URL PAYMENT_API_KEY PAYMENT_CALLBACK_URL

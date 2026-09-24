@@ -12,7 +12,7 @@ import java.util.Optional;
 /**
  * Gateway to Inkomoko's core lending system (Apache Fineract). Balances are always read live —
  * nothing here is cached. Implementations: {@link FineractRestService} (live) and
- * {@link MockFineractService} (local testing).
+ * {@link DemoFineractService} (pilot / demo, backed by the demo_* tables).
  */
 public interface FineractService {
 

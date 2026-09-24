@@ -23,6 +23,7 @@ public class InkomokoProperties {
     private Payment payment = new Payment();
     private Sms sms = new Sms();
     private Admin admin = new Admin();
+    private Demo demo = new Demo();
 
     @Getter @Setter
     public static class Ussd {
@@ -53,7 +54,8 @@ public class InkomokoProperties {
 
     @Getter @Setter
     public static class Fineract {
-        private String mode = "mock";
+        /** demo (default, pilot on *662*105#) | live (Fineract, *311#). "mock" is treated as demo. */
+        private String mode = "demo";
         private String baseUrl;
         private String tenantId = "default";
         private String username;
@@ -82,6 +84,13 @@ public class InkomokoProperties {
         private String baseUrl;
         private String apiKey;
         private String senderId = "INKOMOKO";
+    }
+
+    /** Demo core banking (only used when fineract.mode is not live). */
+    @Getter @Setter
+    public static class Demo {
+        /** Phone numbers registered as demo clients (with sample loans) at startup. */
+        private List<String> allowedMsisdns = new ArrayList<>();
     }
 
     @Getter @Setter
