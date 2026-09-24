@@ -43,8 +43,6 @@ services:
       - SMS_BASE_URL=${SMS_BASE_URL_STAGING:-https://sms.efashe.example/api/v1}
       - SMS_API_KEY=${SMS_API_KEY_STAGING:-CHANGE_ME}
       - SMS_SENDER_ID=${SMS_SENDER_ID_STAGING:-INKOMOKO}
-      # Back-office API
-      - ADMIN_API_KEYS=${ADMIN_API_KEYS_STAGING:-CHANGE_ME_ADMIN_KEY}
     volumes:
       - /opt/tomcat/logs:/opt/tomcat/logs
     network_mode: host

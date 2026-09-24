@@ -17,9 +17,9 @@ import java.time.LocalDateTime;
  * Full state of one USSD dialogue (one row per gateway sessionId).
  *
  * level:
- *   0 = new session          → consent screen
- *   1 = consent shown        → awaiting 1 (continue) / 2 (exit)
- *   2 = language shown       → awaiting 1/2/3
+ *   0 = new session          → language screen
+ *   1 = language shown       → awaiting 1/2/3
+ *   2 = T&C / consent shown  → awaiting 1 (accept) / 2 (exit), in the chosen language
  *   3 = authentication       → PIN setup (first time) or PIN entry
  *   4 = main menu            → awaiting service choice
  *   5 = inside a service     → {@link #service} + {@link #step} drive the sub-flow

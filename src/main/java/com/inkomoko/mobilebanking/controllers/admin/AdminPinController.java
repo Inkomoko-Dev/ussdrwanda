@@ -2,7 +2,7 @@ package com.inkomoko.mobilebanking.controllers.admin;
 
 import com.inkomoko.mobilebanking.models.ClientPin;
 import com.inkomoko.mobilebanking.models.api.ApiResponse;
-import com.inkomoko.mobilebanking.security.AdminApiKeyFilter;
+import com.inkomoko.mobilebanking.security.AdminActor;
 import com.inkomoko.mobilebanking.services.AuditService;
 import com.inkomoko.mobilebanking.services.PinService;
 import com.inkomoko.mobilebanking.utils.PhoneUtils;
@@ -40,22 +40,20 @@ public class AdminPinController {
 
     @PostMapping("/{msisdn}/reset")
     @Operation(summary = "Reset PIN after identity verification (client sets a new PIN on next dial)")
-    public ResponseEntity<ApiResponse<Void>> reset(@PathVariable String msisdn,
-                                                   @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String admin) {
+    public ResponseEntity<ApiResponse<Void>> reset(@PathVariable String msisdn) {
         String phone = PhoneUtils.purify(msisdn);
         boolean ok = pinService.reset(phone);
-        audit.admin(admin, "PIN_RESET", phone, ok, null);
+        audit.admin(AdminActor.current(), "PIN_RESET", phone, ok, null);
         return ok ? ResponseEntity.ok(ApiResponse.ok("PIN reset; client will set a new PIN on next dial"))
                 : ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.fail("No PIN record"));
     }
 
     @PostMapping("/{msisdn}/unlock")
     @Operation(summary = "Unlock a locked PIN without changing it")
-    public ResponseEntity<ApiResponse<Void>> unlock(@PathVariable String msisdn,
-                                                    @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String admin) {
+    public ResponseEntity<ApiResponse<Void>> unlock(@PathVariable String msisdn) {
         String phone = PhoneUtils.purify(msisdn);
         boolean ok = pinService.unlock(phone);
-        audit.admin(admin, "PIN_UNLOCK", phone, ok, null);
+        audit.admin(AdminActor.current(), "PIN_UNLOCK", phone, ok, null);
         return ok ? ResponseEntity.ok(ApiResponse.ok("PIN unlocked"))
                 : ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.fail("No PIN record"));
     }

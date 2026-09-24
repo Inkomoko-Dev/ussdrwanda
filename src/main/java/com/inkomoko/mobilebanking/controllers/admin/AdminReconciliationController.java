@@ -9,7 +9,7 @@ import com.inkomoko.mobilebanking.models.api.ReconciliationDecisionRequest;
 import com.inkomoko.mobilebanking.models.api.ReconciliationProposalRequest;
 import com.inkomoko.mobilebanking.repositories.ReconciliationActionRepository;
 import com.inkomoko.mobilebanking.repositories.RepaymentTransactionRepository;
-import com.inkomoko.mobilebanking.security.AdminApiKeyFilter;
+import com.inkomoko.mobilebanking.security.AdminActor;
 import com.inkomoko.mobilebanking.services.ReconciliationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -71,10 +71,9 @@ public class AdminReconciliationController {
     @Operation(summary = "Maker: propose a reconciliation action")
     public ResponseEntity<ApiResponse<ReconciliationAction>> propose(
             @PathVariable String reference,
-            @Valid @RequestBody ReconciliationProposalRequest req,
-            @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String maker) {
+            @Valid @RequestBody ReconciliationProposalRequest req) {
         return ResponseEntity.ok(ApiResponse.ok("Awaiting checker approval",
-                reconciliationService.propose(reference, req, maker)));
+                reconciliationService.propose(reference, req, AdminActor.resolve(req.getOperator()))));
     }
 
     @GetMapping("/reconciliation-actions")
@@ -87,19 +86,19 @@ public class AdminReconciliationController {
     @Operation(summary = "Checker: approve and execute")
     public ResponseEntity<ApiResponse<ReconciliationAction>> approve(
             @PathVariable Long id,
-            @RequestBody(required = false) ReconciliationDecisionRequest req,
-            @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String checker) {
+            @RequestBody(required = false) ReconciliationDecisionRequest req) {
         return ResponseEntity.ok(ApiResponse.ok("Approved",
-                reconciliationService.approve(id, checker, req == null ? null : req.getComment())));
+                reconciliationService.approve(id, AdminActor.resolve(req == null ? null : req.getOperator()),
+                        req == null ? null : req.getComment())));
     }
 
     @PostMapping("/reconciliation-actions/{id}/reject")
     @Operation(summary = "Checker: reject")
     public ResponseEntity<ApiResponse<ReconciliationAction>> reject(
             @PathVariable Long id,
-            @RequestBody(required = false) ReconciliationDecisionRequest req,
-            @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String checker) {
+            @RequestBody(required = false) ReconciliationDecisionRequest req) {
         return ResponseEntity.ok(ApiResponse.ok("Rejected",
-                reconciliationService.reject(id, checker, req == null ? null : req.getComment())));
+                reconciliationService.reject(id, AdminActor.resolve(req == null ? null : req.getOperator()),
+                        req == null ? null : req.getComment())));
     }
 }

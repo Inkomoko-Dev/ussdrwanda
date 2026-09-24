@@ -7,7 +7,7 @@ import com.inkomoko.mobilebanking.models.api.demo.DemoLoanRequest;
 import com.inkomoko.mobilebanking.models.api.demo.DemoRepaymentRequest;
 import com.inkomoko.mobilebanking.models.demo.DemoLoan;
 import com.inkomoko.mobilebanking.models.demo.DemoRepayment;
-import com.inkomoko.mobilebanking.security.AdminApiKeyFilter;
+import com.inkomoko.mobilebanking.security.AdminActor;
 import com.inkomoko.mobilebanking.services.AuditService;
 import com.inkomoko.mobilebanking.services.DemoDataService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -55,10 +55,9 @@ public class AdminDemoController {
     @PostMapping("/clients")
     @Operation(summary = "Allow a phone number (creates a demo client, with sample loans by default)")
     public ResponseEntity<ApiResponse<DemoDataService.ClientView>> createClient(
-            @Valid @RequestBody DemoClientRequest req,
-            @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String admin) {
+            @Valid @RequestBody DemoClientRequest req) {
         DemoDataService.ClientView v = demo.createClient(req);
-        audit.admin(admin, "DEMO_CLIENT_CREATED", v.client().getMsisdn(), true, null);
+        audit.admin(AdminActor.current(), "DEMO_CLIENT_CREATED", v.client().getMsisdn(), true, null);
         return ResponseEntity.ok(ApiResponse.ok("Demo client created", v));
     }
 
@@ -69,52 +68,49 @@ public class AdminDemoController {
 
     @PutMapping("/clients/{msisdn}")
     public ResponseEntity<ApiResponse<DemoDataService.ClientView>> updateClient(
-            @PathVariable String msisdn, @Valid @RequestBody DemoClientRequest req,
-            @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String admin) {
+            @PathVariable String msisdn, @Valid @RequestBody DemoClientRequest req) {
         DemoDataService.ClientView v = demo.updateClient(msisdn, req);
-        audit.admin(admin, "DEMO_CLIENT_UPDATED", v.client().getMsisdn(), true, null);
+        audit.admin(AdminActor.current(), "DEMO_CLIENT_UPDATED", v.client().getMsisdn(), true, null);
         return ResponseEntity.ok(ApiResponse.ok("Demo client updated", v));
     }
 
     @DeleteMapping("/clients/{msisdn}")
     public ResponseEntity<ApiResponse<Void>> deleteClient(
-            @PathVariable String msisdn, @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String admin) {
+            @PathVariable String msisdn) {
         demo.deleteClient(msisdn);
-        audit.admin(admin, "DEMO_CLIENT_DELETED", msisdn, true, null);
+        audit.admin(AdminActor.current(), "DEMO_CLIENT_DELETED", msisdn, true, null);
         return ResponseEntity.ok(ApiResponse.ok("Demo client deleted"));
     }
 
     @PostMapping("/clients/{msisdn}/sample-loans")
     public ResponseEntity<ApiResponse<DemoDataService.ClientView>> sampleLoans(
-            @PathVariable String msisdn, @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String admin) {
+            @PathVariable String msisdn) {
         DemoDataService.ClientView v = demo.addSampleLoans(msisdn);
-        audit.admin(admin, "DEMO_SAMPLE_LOANS_ADDED", v.client().getMsisdn(), true, null);
+        audit.admin(AdminActor.current(), "DEMO_SAMPLE_LOANS_ADDED", v.client().getMsisdn(), true, null);
         return ResponseEntity.ok(ApiResponse.ok("Sample loans added", v));
     }
 
     @PostMapping("/clients/{msisdn}/loans")
     public ResponseEntity<ApiResponse<DemoLoan>> addLoan(
-            @PathVariable String msisdn, @Valid @RequestBody DemoLoanRequest req,
-            @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String admin) {
+            @PathVariable String msisdn, @Valid @RequestBody DemoLoanRequest req) {
         DemoLoan l = demo.addLoan(msisdn, req);
-        audit.admin(admin, "DEMO_LOAN_CREATED", l.getAccountNo(), true, msisdn);
+        audit.admin(AdminActor.current(), "DEMO_LOAN_CREATED", l.getAccountNo(), true, msisdn);
         return ResponseEntity.ok(ApiResponse.ok("Demo loan created", l));
     }
 
     @PutMapping("/loans/{loanId}")
     public ResponseEntity<ApiResponse<DemoLoan>> updateLoan(
-            @PathVariable Long loanId, @Valid @RequestBody DemoLoanRequest req,
-            @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String admin) {
+            @PathVariable Long loanId, @Valid @RequestBody DemoLoanRequest req) {
         DemoLoan l = demo.updateLoan(loanId, req);
-        audit.admin(admin, "DEMO_LOAN_UPDATED", l.getAccountNo(), true, null);
+        audit.admin(AdminActor.current(), "DEMO_LOAN_UPDATED", l.getAccountNo(), true, null);
         return ResponseEntity.ok(ApiResponse.ok("Demo loan updated", l));
     }
 
     @DeleteMapping("/loans/{loanId}")
     public ResponseEntity<ApiResponse<Void>> deleteLoan(
-            @PathVariable Long loanId, @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String admin) {
+            @PathVariable Long loanId) {
         demo.deleteLoan(loanId);
-        audit.admin(admin, "DEMO_LOAN_DELETED", String.valueOf(loanId), true, null);
+        audit.admin(AdminActor.current(), "DEMO_LOAN_DELETED", String.valueOf(loanId), true, null);
         return ResponseEntity.ok(ApiResponse.ok("Demo loan deleted"));
     }
 
@@ -126,10 +122,9 @@ public class AdminDemoController {
     @PostMapping("/loans/{loanId}/repayments")
     @Operation(summary = "Add a repayment line (applyToBalance=true also reduces the balance)")
     public ResponseEntity<ApiResponse<DemoRepayment>> addRepayment(
-            @PathVariable Long loanId, @Valid @RequestBody DemoRepaymentRequest req,
-            @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String admin) {
+            @PathVariable Long loanId, @Valid @RequestBody DemoRepaymentRequest req) {
         DemoRepayment r = demo.addRepayment(loanId, req);
-        audit.admin(admin, "DEMO_REPAYMENT_ADDED", String.valueOf(loanId), true, r.getAmount() + " " + r.getReference());
+        audit.admin(AdminActor.current(), "DEMO_REPAYMENT_ADDED", String.valueOf(loanId), true, r.getAmount() + " " + r.getReference());
         return ResponseEntity.ok(ApiResponse.ok("Repayment added", r));
     }
 }

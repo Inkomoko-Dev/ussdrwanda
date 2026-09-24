@@ -22,7 +22,6 @@ public class InkomokoProperties {
     private Fineract fineract = new Fineract();
     private Payment payment = new Payment();
     private Sms sms = new Sms();
-    private Admin admin = new Admin();
     private Demo demo = new Demo();
 
     @Getter @Setter
@@ -93,8 +92,4 @@ public class InkomokoProperties {
         private List<String> allowedMsisdns = new ArrayList<>();
     }
 
-    @Getter @Setter
-    public static class Admin {
-        private List<String> apiKeys = new ArrayList<>();
-    }
 }

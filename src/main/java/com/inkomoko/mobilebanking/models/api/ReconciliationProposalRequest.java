@@ -18,4 +18,10 @@ public class ReconciliationProposalRequest {
     private String comment;
     /** Required for MARK_POSTED. */
     private String fineractTxnId;
+    /**
+     * Operator name for maker/checker (maker and checker must differ). Optional; defaults to
+     * the current admin user. Will come from the JWT principal once security is enabled.
+     */
+    @Size(max = 100)
+    private String operator;
 }

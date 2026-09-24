@@ -27,10 +27,10 @@ A mock payment confirms automatically after 5 s. Amounts ending in **13** (e.g. 
 
 ## Demo data API (pilot only)
 
-These endpoints are only available while `inkomoko.fineract.mode` is not `live`. Like the other admin endpoints, they need the `X-API-KEY` and `X-Admin-User` headers.
+These endpoints are only available while `inkomoko.fineract.mode` is not `live`.
 
 ```bash
-H='-H "X-API-KEY: $KEY" -H "X-Admin-User: stanley" -H "Content-Type: application/json"'
+H='-H "Content-Type: application/json"'
 # allow a phone (adds an active loan + a loan in arrears unless "sampleLoans": false)
 curl -X POST $BASE/api/admin/demo/clients $H -d '{"msisdn":"250788683008","displayName":"Stanley M"}'
 # custom loan
@@ -70,7 +70,7 @@ The demo only replaces **one component**, the core-banking adapter behind the `F
 **Switch checklist:**
 1. **Fineract sandbox.** Point staging at the Fineract sandbox (`FINERACT_MODE_STAGING=live` plus the credentials) and run the same UAT scripts used for the demo. Confirm that client search by phone, the loan status mapping, next due date / installment and the repayment posting (`paymentTypeId`, `externalId`) match what the demo showed. Anything that differs is fixed in `FineractRestService` or `ELoanStatus.fromFineract`; the menus don't change.
 2. **Payments and SMS.** Switch `PAYMENT_MODE_STAGING` and `SMS_MODE_STAGING` to `live` against Efashe test credentials and test a real MoMo repayment end to end, including the callback URL.
-3. **Production variables.** Set them in GitLab: DB, Fineract, payment, SMS, `ADMIN_API_KEYS`, `PAYMENT_CALLBACK_TOKEN`, `SUPPORT_HELPLINE`. `USSD_SERVICE_CODE` defaults to `311`.
+3. **Production variables.** Set them in GitLab: DB, Fineract, payment, SMS, `PAYMENT_CALLBACK_TOKEN`, `SUPPORT_HELPLINE`. `USSD_SERVICE_CODE` defaults to `311`.
 4. **Go-live.** Merge to `main`, then ask FDI to route `*311#` to the production URL. Pilot users set their PIN again on first `*311#` dial. PINs are stored per environment, and a PIN is also reset automatically if the client ID behind a number changes.
 5. **Optional rollback.** Keep `*662*105#` pointed at staging during hypercare, so the demo stays available for training.
 6. **After go-live.** The `demo_*` tables stay empty and unused in production. They can be dropped later with a new migration once the pilot is formally closed.
@@ -87,9 +87,9 @@ The FDI gateway POSTs the full dial string on every step. Each answer is appende
 
 | userInput | Answers | Latest |
 |---|---|---|
-| `*662*105#` | none, new session | shows the consent screen |
-| `*662*105*1#` | `1` | `1` |
-| `*662*105*1*1#` | `1, 1` | `1` |
+| `*662*105#` | none, new session | shows the language screen |
+| `*662*105*1#` | `1` | `1` (Kinyarwanda, so the T&C screen is shown in Kinyarwanda) |
+| `*662*105*1*1#` | `1, 1` | `1` (T&C accepted, then PIN) |
 
 **Service code:** `inkomoko.ussd.service-code` (env `USSD_SERVICE_CODE`, `USSD_SERVICE_CODE_STAGING` on staging) is `662*105` for the pilot. Change it to `311` once Inkomoko's shortcode is configured; no code change is needed. The gateway's `serviceCode` (`RW|MTN|662|105` → `662*105`) must match it, or the request is rejected with HTTP 400.
 
@@ -98,8 +98,8 @@ The FDI gateway POSTs the full dial string on every step. Each answer is appende
 ## USSD flow
 
 ```
-*662*105# → Screen 0 consent (1 Continue / 2 Exit)
-      → Screen 1 language (1 Kinyarwanda / 2 English / 3 Francais)
+*662*105# → Screen 1 language (1 Kinyarwanda / 2 English / 3 Francais)
+      → Screen 2 Terms & Conditions / privacy consent in the chosen language (1 Accept / 2 Exit)
       → MSISDN matched to Fineract client (not registered / inactive → end)
       → Screen 2a PIN setup + confirm (first time)  |  Screen 2b PIN entry (3 attempts → locked)
       → MAIN MENU
@@ -126,7 +126,7 @@ Inside a service: 0 = back, 00 = main menu.
 | GET/POST/PUT/DELETE | `/api/admin/faqs` | Help/FAQ content |
 | GET | `/api/admin/audit-logs?actor=` | Audit trail |
 
-Admin calls need the headers `X-API-KEY` (listed in `inkomoko.admin.api-keys`) and `X-Admin-User` (operator name, used for maker/checker and audit).
+The admin endpoints (`/api/admin/**`) are open for now; JWT security will be added before production. Actions are audited as `admin` (`AdminActor`, which will return the JWT user). For maker/checker reconciliation, pass an optional `"operator"` name in the request body; the maker and checker must differ.
 
 ## Repayment & reconciliation
 
@@ -147,7 +147,7 @@ The repayment reference is also sent to Fineract as the transaction `externalId`
 * `userInput` is never logged.
 * The DB-level trigger makes `audit_log` append-only.
 * If a number is reassigned to a different Fineract client, the old PIN is invalidated.
-* Admin API: API key plus operator header. **Replace with SSO/RBAC before production.**
+* Admin API: open for now. **Add JWT security before production** (`AdminActor` is where the logged-in user plugs in).
 
 ## CI/CD (GitLab)
 
@@ -162,7 +162,7 @@ This pipeline follows the loan-service pipeline. It uses the same shell-executor
 * **Container:** `inkomoko-ussd-service`, listening on port **8093** (`APP_PORT` in `.gitlab-ci.yml`; loan-service uses 8089). The health check is `/actuator/health`.
 * **Staging variables:** use the `_STAGING` suffix, e.g. `DB_PASSWORD_STAGING` or `FINERACT_MODE_STAGING`. Integrations default to `mock`. When a mode is set to `live`, its credentials are required.
 * **Production variables:**
-  * Always required: `DB_USERNAME`, `DB_PASSWORD`, `ADMIN_API_KEYS`, `PAYMENT_CALLBACK_TOKEN`.
+  * Always required: `DB_USERNAME`, `DB_PASSWORD`, `PAYMENT_CALLBACK_TOKEN`.
   * Integrations default to `live`, which also requires `FINERACT_BASE_URL/USERNAME/PASSWORD`, `PAYMENT_BASE_URL/API_KEY/CALLBACK_URL` and `SMS_BASE_URL/API_KEY`.
   * Optional: `DB_HOST`, `DB_PORT`, `DB_NAME`, `FINERACT_TENANT_ID`, `FINERACT_PAYMENT_TYPE_ID`, `SUPPORT_HELPLINE`, `*_MODE`.
 * **Logs:** written to `/opt/tomcat/logs/inkomoko-ussd.log` on the host.

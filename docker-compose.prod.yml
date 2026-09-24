@@ -39,8 +39,6 @@ services:
       - SMS_BASE_URL=${SMS_BASE_URL:-}
       - SMS_API_KEY=${SMS_API_KEY:-}
       - SMS_SENDER_ID=${SMS_SENDER_ID:-INKOMOKO}
-      # Back-office API
-      - ADMIN_API_KEYS=${ADMIN_API_KEYS}
     volumes:
       - /opt/tomcat/logs:/opt/tomcat/logs
     network_mode: host

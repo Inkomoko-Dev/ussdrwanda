@@ -243,7 +243,7 @@ deploy-prod:
     - |
       set -e
       require() { for v in "$@"; do eval "val=\${$v:-}"; if [ -z "$val" ]; then echo "ERROR: $v is not set (GitLab CI/CD variables)"; exit 1; fi; done; }
-      require DB_USERNAME DB_PASSWORD ADMIN_API_KEYS PAYMENT_CALLBACK_TOKEN
+      require DB_USERNAME DB_PASSWORD PAYMENT_CALLBACK_TOKEN
       # Production is live-only: demo core banking / mock payments are refused unless explicitly allowed.
       if [ "${ALLOW_DEMO_IN_PRODUCTION:-false}" != "true" ]; then
         for pair in "FINERACT_MODE:${FINERACT_MODE:-live}" "PAYMENT_MODE:${PAYMENT_MODE:-live}" "SMS_MODE:${SMS_MODE:-live}"; do

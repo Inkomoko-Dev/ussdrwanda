@@ -4,7 +4,7 @@ import com.inkomoko.mobilebanking.models.FaqItem;
 import com.inkomoko.mobilebanking.models.api.ApiResponse;
 import com.inkomoko.mobilebanking.models.api.FaqRequest;
 import com.inkomoko.mobilebanking.repositories.FaqItemRepository;
-import com.inkomoko.mobilebanking.security.AdminApiKeyFilter;
+import com.inkomoko.mobilebanking.security.AdminActor;
 import com.inkomoko.mobilebanking.services.AuditService;
 import com.inkomoko.mobilebanking.utils.DateUtility;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -31,34 +31,31 @@ public class AdminFaqController {
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<FaqItem>> create(@Valid @RequestBody FaqRequest req,
-                                                       @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String admin) {
+    public ResponseEntity<ApiResponse<FaqItem>> create(@Valid @RequestBody FaqRequest req) {
         FaqItem item = new FaqItem();
         item.setCreatedAt(DateUtility.nowKigali());
         apply(item, req);
         item = repo.save(item);
-        audit.admin(admin, "FAQ_CREATED", String.valueOf(item.getId()), true, item.getTitle());
+        audit.admin(AdminActor.current(), "FAQ_CREATED", String.valueOf(item.getId()), true, item.getTitle());
         return ResponseEntity.ok(ApiResponse.ok("Created", item));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<ApiResponse<FaqItem>> update(@PathVariable Long id, @Valid @RequestBody FaqRequest req,
-                                                       @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String admin) {
+    public ResponseEntity<ApiResponse<FaqItem>> update(@PathVariable Long id, @Valid @RequestBody FaqRequest req) {
         FaqItem item = repo.findById(id).orElseThrow(() -> new IllegalArgumentException("FAQ item not found: " + id));
         apply(item, req);
         item = repo.save(item);
-        audit.admin(admin, "FAQ_UPDATED", String.valueOf(id), true, item.getTitle());
+        audit.admin(AdminActor.current(), "FAQ_UPDATED", String.valueOf(id), true, item.getTitle());
         return ResponseEntity.ok(ApiResponse.ok("Updated", item));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> deactivate(@PathVariable Long id,
-                                                        @RequestHeader(AdminApiKeyFilter.ADMIN_USER_HEADER) String admin) {
+    public ResponseEntity<ApiResponse<Void>> deactivate(@PathVariable Long id) {
         FaqItem item = repo.findById(id).orElseThrow(() -> new IllegalArgumentException("FAQ item not found: " + id));
         item.setActive(false);
         item.setUpdatedAt(DateUtility.nowKigali());
         repo.save(item);
-        audit.admin(admin, "FAQ_DEACTIVATED", String.valueOf(id), true, item.getTitle());
+        audit.admin(AdminActor.current(), "FAQ_DEACTIVATED", String.valueOf(id), true, item.getTitle());
         return ResponseEntity.ok(ApiResponse.ok("Deactivated"));
     }
 

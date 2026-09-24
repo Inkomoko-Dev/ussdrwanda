@@ -45,7 +45,8 @@ import java.util.regex.Pattern;
  *   out: sessionId, gwRef, appRef, appTstamp, text, continueSession (1 = continue, 0 = end)
  *
  * Flow (proposal §3.3):
- *   L0/L1 consent → L2 language → client lookup in Fineract → L3 PIN setup / PIN entry (max 3)
+ *   L1 language → L2 Terms & Conditions (in the chosen language) → client lookup in Fineract
+ *   → L3 PIN setup / PIN entry (max 3)
  *   → L4 main menu → L5 service menus (balance, status, statement, repay, help)
  */
 @RestController
@@ -59,8 +60,8 @@ public class UssdController {
     private static final Pattern MSISDN_PATTERN = Pattern.compile("^\\+?[0-9]{9,15}$");
     private static final int MAX_INPUT_LENGTH = 200;
 
-    private static final int LEVEL_CONSENT = 1;
-    private static final int LEVEL_LANGUAGE = 2;
+    private static final int LEVEL_LANGUAGE = 1;
+    private static final int LEVEL_CONSENT = 2;
     private static final int LEVEL_AUTH = 3;
 
     private static final String STEP_PIN_SETUP = "PIN_SETUP";
@@ -139,11 +140,11 @@ public class UssdController {
 
         Optional<UssdSession> existing = sessionRepo.findBySessionIdAndMsisdn(req.getSessionId(), msisdn);
 
-        // ── New session: consent screen (Screen 0) ─────────────────────────
+        // ── New session: language screen (Screen 1) ────────────────────────
         if (existing.isEmpty()) {
             UssdSession s = createSession(req, msisdn, segments.size());
-            s.setLevel(LEVEL_CONSENT);
-            return finish(s, requestKey(req.getGwTstamp(), rawInput), CommonHeadings.CONSENT, started);
+            s.setLevel(LEVEL_LANGUAGE);
+            return finish(s, requestKey(req.getGwTstamp(), rawInput), CommonHeadings.LANGUAGE_MENU, started);
         }
 
         UssdSession s = existing.get();
@@ -237,47 +238,52 @@ public class UssdController {
         int level = s.getLevel() == null ? 0 : s.getLevel();
         return switch (level) {
             case 0 -> {
-                s.setLevel(LEVEL_CONSENT);
-                yield CommonHeadings.CONSENT;
+                s.setLevel(LEVEL_LANGUAGE);
+                yield CommonHeadings.LANGUAGE_MENU;
             }
-            case LEVEL_CONSENT -> handleConsent(s, input);
             case LEVEL_LANGUAGE -> handleLanguage(s, input);
+            case LEVEL_CONSENT -> handleConsent(s, input);
             case LEVEL_AUTH -> handleAuth(s, input);
             case CommonMenus.LEVEL_MAIN_MENU -> handleMainMenu(s, input);
             default -> handleServiceLevel(s, input);
         };
     }
 
-    // ── Level 1: consent (ToR 3.1(ix)) ────────────────────────────────────
-
-    private String handleConsent(UssdSession s, String input) {
-        LocalDateTime now = DateUtility.nowKigali();
-        if ("1".equals(input)) {
-            s.setConsentAccepted(true);
-            consentRepo.save(new ConsentLog(s.getMsisdn(), s.getSessionId(), true,
-                    CommonHeadings.CONSENT_NOTICE_VERSION, now));
-            audit.ussd(s.getMsisdn(), s.getSessionId(), "CONSENT_ACCEPTED", CommonHeadings.CONSENT_NOTICE_VERSION, true, null);
-            s.setLevel(LEVEL_LANGUAGE);
-            return CommonHeadings.LANGUAGE_MENU;
-        }
-        if ("2".equals(input)) {
-            consentRepo.save(new ConsentLog(s.getMsisdn(), s.getSessionId(), false,
-                    CommonHeadings.CONSENT_NOTICE_VERSION, now));
-            audit.ussd(s.getMsisdn(), s.getSessionId(), "CONSENT_DECLINED", CommonHeadings.CONSENT_NOTICE_VERSION, true, null);
-            s.end(ESessionEndReason.CONSENT_DECLINED);
-            return CommonHeadings.GOODBYE_BILINGUAL;
-        }
-        return CommonHeadings.INVALID_BILINGUAL + CommonHeadings.CONSENT;
-    }
-
-    // ── Level 2: language → client identification ─────────────────────────
+    // ── Level 1: language (Screen 1) ──────────────────────────────────────
 
     private String handleLanguage(UssdSession s, String input) {
         ELanguage chosen = ELanguage.fromMenuChoice(input);
         if (chosen == null) return CommonHeadings.INVALID_BILINGUAL + CommonHeadings.LANGUAGE_MENU;
         s.setLanguage(chosen);
         languagePreferenceService.savePreferredLanguage(s.getMsisdn(), chosen);
+        s.setLevel(LEVEL_CONSENT);
+        return CommonHeadings.consent(chosen);
+    }
 
+    // ── Level 2: Terms & Conditions / consent in the chosen language (ToR 3.1(ix)) ──
+
+    private String handleConsent(UssdSession s, String input) {
+        ELanguage lang = s.getLanguage();
+        LocalDateTime now = DateUtility.nowKigali();
+        if ("1".equals(input)) {
+            s.setConsentAccepted(true);
+            consentRepo.save(new ConsentLog(s.getMsisdn(), s.getSessionId(), true,
+                    CommonHeadings.CONSENT_NOTICE_VERSION, now));
+            audit.ussd(s.getMsisdn(), s.getSessionId(), "CONSENT_ACCEPTED", CommonHeadings.CONSENT_NOTICE_VERSION, true, null);
+            return identifyClient(s);
+        }
+        if ("2".equals(input)) {
+            consentRepo.save(new ConsentLog(s.getMsisdn(), s.getSessionId(), false,
+                    CommonHeadings.CONSENT_NOTICE_VERSION, now));
+            audit.ussd(s.getMsisdn(), s.getSessionId(), "CONSENT_DECLINED", CommonHeadings.CONSENT_NOTICE_VERSION, true, null);
+            return common.endWith(s, ESessionEndReason.CONSENT_DECLINED, CommonHeadings.thankYou(lang));
+        }
+        return CommonHeadings.invalidChoice(lang) + CommonHeadings.consent(lang);
+    }
+
+    /** After consent: MSISDN → Fineract client, then PIN setup / PIN entry / locked. */
+    private String identifyClient(UssdSession s) {
+        ELanguage lang = s.getLanguage();
         Optional<ClientDto> client;
         try {
             client = fineract.findClientByMsisdn(s.getMsisdn());
@@ -289,7 +295,7 @@ public class UssdController {
         if (client.isEmpty()) {
             s.setClientState(EClientState.NOT_REGISTERED);
             audit.ussd(s.getMsisdn(), s.getSessionId(), "CLIENT_NOT_FOUND", null, false, null);
-            return common.endWith(s, ESessionEndReason.NOT_REGISTERED, CommonHeadings.notRegistered(chosen, helpline));
+            return common.endWith(s, ESessionEndReason.NOT_REGISTERED, CommonHeadings.notRegistered(lang, helpline));
         }
         ClientDto c = client.get();
         s.setClientId(c.clientId());
@@ -297,7 +303,7 @@ public class UssdController {
         if (!c.active()) {
             s.setClientState(EClientState.INACTIVE);
             audit.ussd(s.getMsisdn(), s.getSessionId(), "CLIENT_INACTIVE", String.valueOf(c.clientId()), false, null);
-            return common.endWith(s, ESessionEndReason.NOT_REGISTERED, CommonHeadings.inactiveClient(chosen, helpline));
+            return common.endWith(s, ESessionEndReason.NOT_REGISTERED, CommonHeadings.inactiveClient(lang, helpline));
         }
 
         EClientState state = pinService.resolveState(s.getMsisdn(), c.clientId(), s.getSessionId());
@@ -306,15 +312,15 @@ public class UssdController {
         return switch (state) {
             case LOCKED -> {
                 audit.ussd(s.getMsisdn(), s.getSessionId(), "LOGIN_BLOCKED_LOCKED", String.valueOf(c.clientId()), false, null);
-                yield common.endWith(s, ESessionEndReason.ACCOUNT_LOCKED, CommonHeadings.pinLocked(chosen, helpline));
+                yield common.endWith(s, ESessionEndReason.ACCOUNT_LOCKED, CommonHeadings.pinLocked(lang, helpline));
             }
             case PIN_NOT_SET -> {
                 s.setStep(STEP_PIN_SETUP);
-                yield CommonHeadings.pinSetup(chosen, props.getUssd().getPinLength());
+                yield CommonHeadings.pinSetup(lang, props.getUssd().getPinLength());
             }
             default -> {
                 s.setStep(STEP_PIN_ENTRY);
-                yield CommonHeadings.enterPin(chosen, CommonMenus.firstName(c.displayName()));
+                yield CommonHeadings.enterPin(lang, CommonMenus.firstName(c.displayName()));
             }
         };
     }

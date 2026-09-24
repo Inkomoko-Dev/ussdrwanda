@@ -12,24 +12,26 @@ public final class CommonHeadings {
     private CommonHeadings() {
     }
 
-    // ── Screen 0: consent (bilingual, shown before language selection) ─────
-    public static final String CONSENT =
-            "By continuing, you consent to Inkomoko's Privacy Notice.\n"
-            + "Ukomeje, wemeye Itangazo ry'Ibanga rya Inkomoko.\n"
-            + "1. Komeza / Continue\n"
-            + "2. Hagarika / Exit";
-
-    public static final String CONSENT_NOTICE_VERSION = "v1";
-
-    // ── Screen 1: language ────────────────────────────────────────────────
+    // ── Screen 1: language (first screen of every session) ─────────────────
     public static final String LANGUAGE_MENU =
             "Murakaza neza kuri Inkomoko / Welcome to Inkomoko\n"
             + "1. Kinyarwanda\n"
             + "2. English\n"
             + "3. Francais";
 
+    /** Only used on the language screen, before a language is known. */
     public static final String INVALID_BILINGUAL = "Ntibyemewe / Invalid choice.\n";
-    public static final String GOODBYE_BILINGUAL = "Murakoze / Thank you.";
+
+    // ── Screen 2: Terms & Conditions / privacy consent, in the chosen language ──
+    /** Bump when the consent wording changes; stored with every consent record. */
+    public static final String CONSENT_NOTICE_VERSION = "v2";
+
+    public static String consent(ELanguage l) {
+        return l.pick(
+                "Ukomeje, wemera Amategeko n'Amabwiriza ndetse n'Itangazo ry'Ibanga bya Inkomoko.\n1. Ndemera\n2. Hagarika",
+                "By continuing, you accept Inkomoko's Terms & Conditions and Privacy Notice.\n1. Accept\n2. Exit",
+                "En continuant, vous acceptez les Conditions generales et la Politique de confidentialite d'Inkomoko.\n1. J'accepte\n2. Quitter");
+    }
 
     // ── Screen 3: main menu ───────────────────────────────────────────────
     public static String mainMenu(ELanguage l) {
