@@ -2,7 +2,6 @@ package com.inkomoko.mobilebanking.controllers;
 
 import com.inkomoko.mobilebanking.config.InkomokoProperties;
 import com.inkomoko.mobilebanking.enums.EClientState;
-import com.inkomoko.mobilebanking.enums.ELanguage;
 import com.inkomoko.mobilebanking.enums.ESessionEndReason;
 import com.inkomoko.mobilebanking.models.ConsentLog;
 import com.inkomoko.mobilebanking.models.UssdSession;
@@ -45,9 +44,9 @@ import java.util.regex.Pattern;
  *   out: sessionId, gwRef, appRef, appTstamp, text, continueSession (1 = continue, 0 = end)
  *
  * Flow (proposal §3.3):
- *   L1 language → L2 Terms & Conditions (in the chosen language) → client lookup in Fineract
- *   → L3 PIN setup / PIN entry (max 3)
- *   → L4 main menu → L5 service menus (balance, status, statement, repay, help)
+ *   First dial: language, then Terms & Conditions, then client lookup, then PIN setup.
+ *   A later dial skips language and terms once they are saved, and asks for the PIN.
+ *   After login: main menu, then balance, status, statement, repay, help, or settings.
  */
 @RestController
 @RequestMapping("/api/ussd")
@@ -76,6 +75,7 @@ public class UssdController {
     private final FineractService fineract;
     private final AuditService audit;
     private final InkomokoProperties props;
+    private final com.inkomoko.mobilebanking.services.CountryService countries;
 
     // ── Menu handlers ──────────────────────────────────────────────────────
     private final CheckBalanceMenu balanceMenu;
@@ -83,7 +83,9 @@ public class UssdController {
     private final MiniStatementMenu miniStatementMenu;
     private final RepayLoanMenu repayLoanMenu;
     private final HelpMenu helpMenu;
+    private final SettingsMenu settingsMenu;
     private final CommonMenus common;
+    private final CommonHeadings headings;
 
     // ══════════════════════════════════════════════════════════════════════
     //  Main endpoint
@@ -110,8 +112,8 @@ public class UssdController {
         } catch (Exception e) {
             log.error("USSD unhandled error: msisdn={} sessionId={} error={}", msisdn, req.getSessionId(),
                     e.getMessage(), e);
-            ELanguage lang = languagePreferenceService.preferredLanguage(msisdn);
-            outcome = new Outcome(CommonHeadings.serviceUnavailable(lang), false);
+            String lang = languagePreferenceService.preferredLanguage(msisdn);
+            outcome = new Outcome(headings.serviceUnavailable(lang), false);
             markErrored(req.getSessionId(), msisdn);
         }
 
@@ -134,7 +136,7 @@ public class UssdController {
     private Processed process(UssdRequest req, String msisdn, long started) {
         // Strip the code the gateway says was dialled (e.g. "RW|MTN|662|105" → 662*105), else the configured one.
         String dialled = UssdInputParser.normalizeServiceCode(req.getServiceCode());
-        String code = dialled.isEmpty() ? props.getUssd().getServiceCode() : dialled;
+        String code = dialled.isEmpty() ? countries.serviceCode() : dialled;
         List<String> segments = UssdInputParser.segments(req.getUserInput(), code);
         String rawInput = req.getUserInput() == null ? "" : req.getUserInput().trim();
 
@@ -143,15 +145,14 @@ public class UssdController {
         // ── New session: language screen (Screen 1) ────────────────────────
         if (existing.isEmpty()) {
             UssdSession s = createSession(req, msisdn, segments.size());
-            s.setLevel(LEVEL_LANGUAGE);
-            return finish(s, requestKey(req.getGwTstamp(), rawInput), CommonHeadings.LANGUAGE_MENU, started);
+            return finish(s, requestKey(req.getGwTstamp(), rawInput), beginSession(s), started);
         }
 
         UssdSession s = existing.get();
-        ELanguage lang = s.getLanguage() != null ? s.getLanguage() : ELanguage.KINYARWANDA;
+        String lang = s.getLanguage() != null ? s.getLanguage() : languagePreferenceService.defaultLanguage();
 
         if (s.isCloseCurrentSession()) {
-            return new Processed(new Outcome(CommonHeadings.sessionExpired(lang, props.getUssd().getServiceCode()),
+            return new Processed(new Outcome(headings.sessionExpired(lang, countries.serviceCode()),
                     false), s);
         }
 
@@ -172,7 +173,7 @@ public class UssdController {
         if (s.getUpdatedAt() != null
                 && s.getUpdatedAt().isBefore(now.minusSeconds(props.getUssd().getSessionTimeoutSeconds()))) {
             s.end(ESessionEndReason.ABANDONED);
-            return finish(s, requestKey(req.getGwTstamp(), rawInput), CommonHeadings.sessionExpired(lang, props.getUssd().getServiceCode()), started);
+            return finish(s, requestKey(req.getGwTstamp(), rawInput), headings.sessionExpired(lang, countries.serviceCode()), started);
         }
 
         String input = latestInput(s, segments);
@@ -237,10 +238,7 @@ public class UssdController {
     private String route(UssdSession s, String input) {
         int level = s.getLevel() == null ? 0 : s.getLevel();
         return switch (level) {
-            case 0 -> {
-                s.setLevel(LEVEL_LANGUAGE);
-                yield CommonHeadings.LANGUAGE_MENU;
-            }
+            case 0 -> beginSession(s);
             case LEVEL_LANGUAGE -> handleLanguage(s, input);
             case LEVEL_CONSENT -> handleConsent(s, input);
             case LEVEL_AUTH -> handleAuth(s, input);
@@ -252,38 +250,79 @@ public class UssdController {
     // ── Level 1: language (Screen 1) ──────────────────────────────────────
 
     private String handleLanguage(UssdSession s, String input) {
-        ELanguage chosen = ELanguage.fromMenuChoice(input);
-        if (chosen == null) return CommonHeadings.INVALID_BILINGUAL + CommonHeadings.LANGUAGE_MENU;
+        List<String> languages = countries.languages();
+        int choice = com.inkomoko.mobilebanking.utils.GeneralMethods.parseInputAsInteger(input);
+        String chosen = choice >= 1 && choice <= languages.size() ? languages.get(choice - 1) : null;
+        if (chosen == null) return headings.invalidLanguage(languages);
         s.setLanguage(chosen);
         languagePreferenceService.savePreferredLanguage(s.getMsisdn(), chosen);
+        if (hasCurrentConsent(s.getMsisdn())) {
+            s.setConsentAccepted(true);
+            return identifyClient(s);
+        }
         s.setLevel(LEVEL_CONSENT);
-        return CommonHeadings.consent(chosen);
+        return headings.consent(chosen);
+    }
+
+    /**
+     * First screen of a dial. Language and terms are asked only when this phone has not
+     * completed them. A saved PIN goes straight to the PIN prompt.
+     */
+    private String beginSession(UssdSession s) {
+        List<String> languages = countries.languages();
+        var chosen = languagePreferenceService.chosenLanguage(s.getMsisdn());
+        if (chosen.isEmpty() && languages.size() != 1) {
+            s.setLevel(LEVEL_LANGUAGE);
+            return headings.languageMenu(languages);
+        }
+        String lang = chosen.orElseGet(() -> languages.isEmpty()
+                ? languagePreferenceService.defaultLanguage() : languages.get(0));
+        s.setLanguage(lang);
+        if (!hasCurrentConsent(s.getMsisdn())) {
+            s.setLevel(LEVEL_CONSENT);
+            return headings.consent(lang);
+        }
+        s.setConsentAccepted(true);
+        return identifyClient(s);
+    }
+
+    /** True when this phone accepted the terms wording that is on screen today. */
+    private boolean hasCurrentConsent(String msisdn) {
+        for (ConsentLog log : consentRepo.findByMsisdnAndAcceptedTrue(msisdn)) {
+            String version = log.getNoticeVersion();
+            if (version == null) continue;
+            int dash = version.indexOf('-');
+            if (dash <= 0) continue;
+            String lang = version.substring(0, dash);
+            if (version.equals(headings.consentVersion(lang))) return true;
+        }
+        return false;
     }
 
     // ── Level 2: Terms & Conditions / consent in the chosen language (ToR 3.1(ix)) ──
 
     private String handleConsent(UssdSession s, String input) {
-        ELanguage lang = s.getLanguage();
+        String lang = s.getLanguage();
         LocalDateTime now = DateUtility.nowKigali();
         if ("1".equals(input)) {
             s.setConsentAccepted(true);
-            consentRepo.save(new ConsentLog(s.getMsisdn(), s.getSessionId(), true,
-                    CommonHeadings.CONSENT_NOTICE_VERSION, now));
-            audit.ussd(s.getMsisdn(), s.getSessionId(), "CONSENT_ACCEPTED", CommonHeadings.CONSENT_NOTICE_VERSION, true, null);
+            String version = headings.consentVersion(lang);
+            consentRepo.save(new ConsentLog(s.getMsisdn(), s.getSessionId(), true, version, now));
+            audit.ussd(s.getMsisdn(), s.getSessionId(), "CONSENT_ACCEPTED", version, true, null);
             return identifyClient(s);
         }
         if ("2".equals(input)) {
-            consentRepo.save(new ConsentLog(s.getMsisdn(), s.getSessionId(), false,
-                    CommonHeadings.CONSENT_NOTICE_VERSION, now));
-            audit.ussd(s.getMsisdn(), s.getSessionId(), "CONSENT_DECLINED", CommonHeadings.CONSENT_NOTICE_VERSION, true, null);
-            return common.endWith(s, ESessionEndReason.CONSENT_DECLINED, CommonHeadings.thankYou(lang));
+            String version = headings.consentVersion(lang);
+            consentRepo.save(new ConsentLog(s.getMsisdn(), s.getSessionId(), false, version, now));
+            audit.ussd(s.getMsisdn(), s.getSessionId(), "CONSENT_DECLINED", version, true, null);
+            return common.endWith(s, ESessionEndReason.CONSENT_DECLINED, headings.thankYou(lang));
         }
-        return CommonHeadings.invalidChoice(lang) + CommonHeadings.consent(lang);
+        return headings.invalidChoice(lang) + headings.consent(lang);
     }
 
     /** After consent: MSISDN → Fineract client, then PIN setup / PIN entry / locked. */
     private String identifyClient(UssdSession s) {
-        ELanguage lang = s.getLanguage();
+        String lang = s.getLanguage();
         Optional<ClientDto> client;
         try {
             client = fineract.findClientByMsisdn(s.getMsisdn());
@@ -295,7 +334,7 @@ public class UssdController {
         if (client.isEmpty()) {
             s.setClientState(EClientState.NOT_REGISTERED);
             audit.ussd(s.getMsisdn(), s.getSessionId(), "CLIENT_NOT_FOUND", null, false, null);
-            return common.endWith(s, ESessionEndReason.NOT_REGISTERED, CommonHeadings.notRegistered(lang, helpline));
+            return common.endWith(s, ESessionEndReason.NOT_REGISTERED, headings.notRegistered(lang, helpline));
         }
         ClientDto c = client.get();
         s.setClientId(c.clientId());
@@ -303,7 +342,7 @@ public class UssdController {
         if (!c.active()) {
             s.setClientState(EClientState.INACTIVE);
             audit.ussd(s.getMsisdn(), s.getSessionId(), "CLIENT_INACTIVE", String.valueOf(c.clientId()), false, null);
-            return common.endWith(s, ESessionEndReason.NOT_REGISTERED, CommonHeadings.inactiveClient(lang, helpline));
+            return common.endWith(s, ESessionEndReason.NOT_REGISTERED, headings.inactiveClient(lang, helpline));
         }
 
         EClientState state = pinService.resolveState(s.getMsisdn(), c.clientId(), s.getSessionId());
@@ -312,15 +351,23 @@ public class UssdController {
         return switch (state) {
             case LOCKED -> {
                 audit.ussd(s.getMsisdn(), s.getSessionId(), "LOGIN_BLOCKED_LOCKED", String.valueOf(c.clientId()), false, null);
-                yield common.endWith(s, ESessionEndReason.ACCOUNT_LOCKED, CommonHeadings.pinLocked(lang, helpline));
+                yield common.endWith(s, ESessionEndReason.ACCOUNT_LOCKED, headings.pinLocked(lang, helpline));
+            }
+            case NOT_ONBOARDED -> {
+                audit.ussd(s.getMsisdn(), s.getSessionId(), "CLIENT_NOT_ONBOARDED", String.valueOf(c.clientId()), false, null);
+                yield common.endWith(s, ESessionEndReason.NOT_REGISTERED, headings.notOnboarded(lang, helpline));
+            }
+            case DISABLED -> {
+                audit.ussd(s.getMsisdn(), s.getSessionId(), "CLIENT_DISABLED", String.valueOf(c.clientId()), false, null);
+                yield common.endWith(s, ESessionEndReason.ACCOUNT_LOCKED, headings.accessDisabled(lang, helpline));
             }
             case PIN_NOT_SET -> {
                 s.setStep(STEP_PIN_SETUP);
-                yield CommonHeadings.pinSetup(lang, props.getUssd().getPinLength());
+                yield headings.pinSetup(lang, props.getUssd().getPinLength());
             }
             default -> {
                 s.setStep(STEP_PIN_ENTRY);
-                yield CommonHeadings.enterPin(lang, CommonMenus.firstName(c.displayName()));
+                yield headings.enterPin(lang, CommonMenus.firstName(c.displayName()));
             }
         };
     }
@@ -337,34 +384,34 @@ public class UssdController {
     }
 
     private String pinSetup(UssdSession s, String input) {
-        ELanguage l = s.getLanguage();
+        String l = s.getLanguage();
         int digits = props.getUssd().getPinLength();
         if (!pinService.isValidFormat(input)) {
-            return CommonHeadings.pinBadFormat(l, digits) + CommonHeadings.pinSetup(l, digits);
+            return headings.pinBadFormat(l, digits) + headings.pinSetup(l, digits);
         }
         if (pinService.isWeak(input)) {
-            return CommonHeadings.pinWeak(l) + CommonHeadings.pinSetup(l, digits);
+            return headings.pinWeak(l) + headings.pinSetup(l, digits);
         }
         s.setPendingPinHash(pinService.hash(input));   // only the bcrypt hash is kept between steps
         s.setStep(STEP_PIN_CONFIRM);
-        return CommonHeadings.pinConfirm(l);
+        return headings.pinConfirm(l);
     }
 
     private String pinConfirm(UssdSession s, String input) {
-        ELanguage l = s.getLanguage();
+        String l = s.getLanguage();
         boolean match = pinService.matches(input, s.getPendingPinHash());
         s.setPendingPinHash(null);
         if (!match) {
             s.setStep(STEP_PIN_SETUP);
-            return CommonHeadings.pinMismatch(l) + CommonHeadings.pinSetup(l, props.getUssd().getPinLength());
+            return headings.pinMismatch(l) + headings.pinSetup(l, props.getUssd().getPinLength());
         }
-        pinService.setPin(s.getMsisdn(), s.getClientId(), input);
+        pinService.setPin(s.getMsisdn(), s.getClientId(), s.getClientName(), input);
         audit.ussd(s.getMsisdn(), s.getSessionId(), "PIN_SETUP", String.valueOf(s.getClientId()), true, null);
-        return authenticated(s, CommonHeadings.pinCreated(l));
+        return authenticated(s, headings.pinCreated(l));
     }
 
     private String pinEntry(UssdSession s, String input) {
-        ELanguage l = s.getLanguage();
+        String l = s.getLanguage();
         String client = String.valueOf(s.getClientId());
         return switch (pinService.verify(s.getMsisdn(), input)) {
             case SUCCESS -> {
@@ -373,13 +420,13 @@ public class UssdController {
             }
             case WRONG -> {
                 audit.ussd(s.getMsisdn(), s.getSessionId(), "LOGIN_FAILED", client, false, null);
-                yield CommonHeadings.wrongPin(l, pinService.remainingAttempts(s.getMsisdn()))
-                        + CommonHeadings.enterPin(l, null);
+                yield headings.wrongPin(l, pinService.remainingAttempts(s.getMsisdn()))
+                        + headings.enterPin(l, null);
             }
             case LOCKED -> {
                 audit.ussd(s.getMsisdn(), s.getSessionId(), "LOGIN_FAILED", client, false, null);
                 audit.ussd(s.getMsisdn(), s.getSessionId(), "PIN_LOCKED", client, false, null);
-                yield common.endWith(s, ESessionEndReason.ACCOUNT_LOCKED, CommonHeadings.pinLocked(l, common.helpline()));
+                yield common.endWith(s, ESessionEndReason.ACCOUNT_LOCKED, headings.pinLocked(l, common.helpline()));
             }
         };
     }
@@ -389,13 +436,13 @@ public class UssdController {
         s.setClientState(EClientState.ACTIVE);
         s.setStep(null);
         s.setLevel(CommonMenus.LEVEL_MAIN_MENU);
-        return prefix + CommonHeadings.mainMenu(s.getLanguage());
+        return prefix + headings.mainMenu(s.getLanguage());
     }
 
     // ── Level 4: main menu ────────────────────────────────────────────────
 
     private String handleMainMenu(UssdSession s, String input) {
-        ELanguage l = s.getLanguage();
+        String l = s.getLanguage();
         if (!s.isAuthenticated()) return common.unavailable(s);
         String service = switch (input) {
             case "1" -> CheckBalanceMenu.SERVICE;
@@ -403,13 +450,14 @@ public class UssdController {
             case "3" -> MiniStatementMenu.SERVICE;
             case "4" -> RepayLoanMenu.SERVICE;
             case "5" -> HelpMenu.SERVICE;
+            case "6" -> SettingsMenu.SERVICE;
             case "0" -> "exit";
             default -> null;
         };
         if ("exit".equals(service)) {
-            return common.endWith(s, ESessionEndReason.USER_EXIT, CommonHeadings.thankYou(l));
+            return common.endWith(s, ESessionEndReason.USER_EXIT, headings.thankYou(l));
         }
-        if (service == null) return CommonHeadings.invalidChoice(l) + CommonHeadings.mainMenu(l);
+        if (service == null) return headings.invalidChoice(l) + headings.mainMenu(l);
 
         s.resetServiceState();
         s.setService(service);
@@ -432,6 +480,7 @@ public class UssdController {
             case MiniStatementMenu.SERVICE -> miniStatementMenu.processMenu(s, input);
             case RepayLoanMenu.SERVICE -> repayLoanMenu.processMenu(s, input);
             case HelpMenu.SERVICE -> helpMenu.processMenu(s, input);
+            case SettingsMenu.SERVICE -> settingsMenu.processMenu(s, input);
             default -> common.backToMain(s);
         };
     }
@@ -451,7 +500,7 @@ public class UssdController {
             return "userInput too long";
         }
         // Gateway sends e.g. "RW|MTN|662|105"; it must match inkomoko.ussd.service-code (662*105, later 311).
-        String expected = UssdInputParser.normalizeServiceCode(props.getUssd().getServiceCode());
+        String expected = UssdInputParser.normalizeServiceCode(countries.serviceCode());
         String given = UssdInputParser.normalizeServiceCode(req.getServiceCode());
         if (!expected.isEmpty() && !given.isEmpty() && !given.equals(expected)) {
             return "unexpected serviceCode " + given;

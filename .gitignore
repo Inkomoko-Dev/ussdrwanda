@@ -31,3 +31,9 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Admin portal (React) ###
+frontend/node_modules/
+frontend/dist/
+src/main/resources/static/portal/
+*.tsbuildinfo

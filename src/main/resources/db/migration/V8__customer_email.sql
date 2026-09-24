@@ -1,0 +1,2 @@
+ALTER TABLE client_pin ADD COLUMN email VARCHAR(120);
+ALTER TABLE demo_client ADD COLUMN email VARCHAR(120);

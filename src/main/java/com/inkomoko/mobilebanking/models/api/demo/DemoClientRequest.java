@@ -7,7 +7,8 @@ import lombok.Setter;
 
 /**
  * Create / update a demo client (an "allowed number").
- * On create, msisdn is required; sampleLoans (default true) adds an active loan and a loan in arrears.
+ * On create, msisdn is required; sampleLoans (default true) adds an active loan and a loan in arrears;
+ * onboard (default true) also registers the number for USSD, as staff would in Customers → Onboard.
  * On update, null fields are left unchanged.
  */
 @Getter
@@ -20,4 +21,5 @@ public class DemoClientRequest {
     private String displayName;
     private Boolean active;
     private Boolean sampleLoans;
+    private Boolean onboard;
 }

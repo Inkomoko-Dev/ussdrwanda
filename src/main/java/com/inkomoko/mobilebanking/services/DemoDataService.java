@@ -47,25 +47,41 @@ public class DemoDataService {
     private final DemoRepaymentRepository repaymentRepo;
     private final DemoFineractService demoFineract;
     private final InkomokoProperties props;
+    private final com.inkomoko.mobilebanking.services.admin.CustomerService customers;
 
-    /** Registers numbers from inkomoko.demo.allowed-msisdns (with sample loans) on startup. */
+    /**
+     * Registers numbers from inkomoko.demo.allowed-msisdns on startup: demo core-banking client with
+     * sample loans, onboarded for USSD by "system" (the client creates a PIN on first dial).
+     */
     @EventListener(ApplicationReadyEvent.class)
     public void seedAllowedNumbers() {
         for (String raw : props.getDemo().getAllowedMsisdns()) {
             String msisdn = PhoneUtils.purify(raw);
-            if (!PhoneUtils.isValid(msisdn) || clientRepo.existsByMsisdn(msisdn)) continue;
+            if (!PhoneUtils.isValid(msisdn)) continue;
             try {
-                DemoClientRequest req = new DemoClientRequest();
-                req.setMsisdn(msisdn);
-                req.setSampleLoans(true);
-                createClient(req);
-                log.info("[DEMO] registered allowed number {} with sample loans", msisdn);
+                if (!clientRepo.existsByMsisdn(msisdn)) {
+                    DemoClientRequest req = new DemoClientRequest();
+                    req.setMsisdn(msisdn);
+                    req.setSampleLoans(true);
+                    createClient(req);
+                    log.info("[DEMO] registered allowed number {} with sample loans", msisdn);
+                }
+                onboardQuietly(msisdn, "system");
             } catch (Exception e) {
                 log.warn("[DEMO] could not register {}: {}", msisdn, e.getMessage());
             }
         }
         log.warn("Core banking is in DEMO mode — {} demo client(s). Manage them at /api/admin/demo/clients",
                 clientRepo.count());
+    }
+
+    /** Onboards the number for USSD unless it is already registered (no SMS in demo). */
+    public void onboardQuietly(String msisdn, String by) {
+        try {
+            customers.onboard(new com.inkomoko.mobilebanking.models.api.portal.PortalDtos.OnboardRequest(msisdn, false), by);
+        } catch (IllegalStateException alreadyRegistered) {
+            log.debug("[DEMO] {} already onboarded: {}", msisdn, alreadyRegistered.getMessage());
+        }
     }
 
     // ── Clients (allowed numbers) ──────────────────────────────────────────

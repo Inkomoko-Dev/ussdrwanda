@@ -1,8 +1,10 @@
 package com.inkomoko.mobilebanking.enums;
 
 public enum EPinStatus {
-    /** No PIN yet, or reset by support — client goes through self-service setup on next dial. */
+    /** Onboarded by staff (or PIN reset): the client creates a PIN on their next dial. */
     NOT_SET,
     ACTIVE,
-    LOCKED
+    LOCKED,
+    /** USSD access switched off by staff (portal). */
+    DISABLED
 }

@@ -39,5 +39,9 @@ public class AuditLog {
     private String sessionId;
     private boolean success;
     private String detail;
+    /** Client address for the request that caused this record. Null for jobs and startup. */
+    private String ipAddress;
+    /** Country of {@code ipAddress} when it is a public address and the lookup succeeds. */
+    private String ipCountry;
     private LocalDateTime loggedAt;
 }

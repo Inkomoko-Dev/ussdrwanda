@@ -19,6 +19,11 @@ public interface FineractService {
     /** Matches the caller's MSISDN against the Fineract client record (ToR 3.1(vii)). */
     Optional<ClientDto> findClientByMsisdn(String msisdn);
 
+    Optional<ClientDto> findClientById(Long clientId);
+
+    /** Updates the client's name, mobile number and e-mail in core banking. */
+    void updateClient(Long clientId, String displayName, String mobileNo, String email);
+
     /** All loans of the client (basic fields + mapped status). */
     List<LoanSummaryDto> getClientLoans(Long clientId);
 
@@ -34,4 +39,7 @@ public interface FineractService {
     /** Posts a repayment; returns the Fineract transaction id. */
     String postRepayment(Long loanId, BigDecimal amount, LocalDate date, String externalId, String receiptNumber,
                          String note);
+
+    /** Undoes a repayment already posted to the loan. */
+    void reverseRepayment(Long loanId, String fineractTxnId);
 }

@@ -1,7 +1,6 @@
 package com.inkomoko.mobilebanking.utils.menus;
 
 import com.inkomoko.mobilebanking.config.InkomokoProperties;
-import com.inkomoko.mobilebanking.enums.ELanguage;
 import com.inkomoko.mobilebanking.enums.ESessionEndReason;
 import com.inkomoko.mobilebanking.enums.ETelecom;
 import com.inkomoko.mobilebanking.models.UssdSession;
@@ -16,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 4. Repay Loan (ToR 3.1(iv), proposal §3.5 / Screens 5–7).
@@ -40,12 +40,14 @@ public class RepayLoanMenu {
     private static final String STEP_CONFIRM = "CONFIRM";
 
     private final CommonMenus common;
+    private final CommonHeadings headings;
     private final FineractService fineract;
     private final RepaymentService repaymentService;
     private final InkomokoProperties props;
+    private final com.inkomoko.mobilebanking.services.CountryService countries;
 
     public String processMenu(UssdSession s, String input) {
-        ELanguage l = s.getLanguage();
+        String l = s.getLanguage();
         try {
             if (s.getStep() == null) return start(s);
             if ("0".equals(input) && !STEP_CONFIRM.equals(s.getStep())) return common.backToMain(s);
@@ -55,7 +57,7 @@ public class RepayLoanMenu {
                     Long loanId = common.resolveLoanChoice(s, input);
                     if (loanId == null) {
                         s.setStep(null);
-                        yield CommonHeadings.invalidChoice(l) + start(s);
+                        yield headings.invalidChoice(l) + start(s);
                     }
                     yield amountPrompt(s, fineract.getLoanDetails(loanId), "");
                 }
@@ -70,13 +72,10 @@ public class RepayLoanMenu {
     }
 
     private String start(UssdSession s) {
-        ELanguage l = s.getLanguage();
+        String l = s.getLanguage();
         ETelecom telecom = PhoneUtils.detectTelecom(s.getNetworkCode(), s.getMsisdn());
         if (telecom == null) {
-            return common.endWith(s, ESessionEndReason.COMPLETED, l.pick(
-                    "Kwishyura ukoresheje Mobile Money bikorwa kuri MTN na Airtel gusa.",
-                    "Mobile Money repayment is available for MTN and Airtel numbers only.",
-                    "Le remboursement Mobile Money est disponible uniquement pour MTN et Airtel."));
+            return common.endWith(s, ESessionEndReason.COMPLETED, headings.text(l, "repay.telecom_unsupported"));
         }
         s.setTelecom(telecom);
 
@@ -86,95 +85,74 @@ public class RepayLoanMenu {
         if (loans.isEmpty()) {
             s.setStep(STEP_SELECT);
             s.setLoanOptions("");
-            return CommonHeadings.noActiveLoan(l) + CommonHeadings.back(l);
+            return headings.noActiveLoan(l) + headings.back(l);
         }
         if (loans.size() == 1) return amountPrompt(s, fineract.getLoanDetails(loans.get(0).loanId()), "");
         s.setStep(STEP_SELECT);
-        return common.loanSelectionScreen(s, loans, common::balanceLabel);
+        return common.loanSelectionScreen(s, loans, common::loanListLabel);
     }
 
     private String amountPrompt(UssdSession s, LoanSummaryDto loan, String prefix) {
-        ELanguage l = s.getLanguage();
+        String l = s.getLanguage();
         if (loan.clientId() != null && !loan.clientId().equals(s.getClientId())) return common.unavailable(s);
         s.setLoanId(loan.loanId());
         s.setLoanAccountNo(loan.accountNo());
         s.setOutstanding(loan.totalOutstanding());
         s.setStep(STEP_AMOUNT);
-        String min = GeneralMethods.rwf(props.getRepayment().getMinAmount());
+        String min = GeneralMethods.rwf(countries.minRepayment());
         String outstanding = GeneralMethods.rwf(loan.totalOutstanding());
         String overdue = GeneralMethods.rwf(loan.totalOverdue());
-        return prefix + l.pick(
-                "Ideni " + loan.accountNo() + "\nAmafaranga usigaje kwishyura: " + outstanding
-                        + "\nAyarengeje igihe: " + overdue + "\nAndika amafaranga ushaka kwishyura (min " + min + ")",
-                "Loan " + loan.accountNo() + "\nOutstanding: " + outstanding + "\nOverdue: " + overdue
-                        + "\nEnter amount to pay (min " + min + ")",
-                "Pret " + loan.accountNo() + "\nReste a payer: " + outstanding + "\nEn retard: " + overdue
-                        + "\nSaisissez le montant (min " + min + ")")
-                + CommonHeadings.back(l);
+        return prefix + headings.text(l, "repay.amount_prompt", Map.of("account", loan.accountNo(),
+                "outstanding", outstanding, "overdue", overdue, "min", min))
+                + headings.back(l);
     }
 
     private String handleAmount(UssdSession s, String input) {
-        ELanguage l = s.getLanguage();
-        InkomokoProperties.Repayment cfg = props.getRepayment();
+        String l = s.getLanguage();
+        BigDecimal minAmount = countries.minRepayment();
+        BigDecimal maxAmount = countries.maxRepayment();
         BigDecimal amount = GeneralMethods.parseAmount(input);
         BigDecimal outstanding = GeneralMethods.nz(s.getOutstanding());
         String error = null;
         if (amount == null) {
-            error = l.pick("Umubare si wo.\n", "Invalid amount.\n", "Montant invalide.\n");
-        } else if (amount.compareTo(cfg.getMinAmount()) < 0) {
-            error = l.pick("Nibura ni ", "Minimum is ", "Le minimum est ") + GeneralMethods.rwf(cfg.getMinAmount()) + ".\n";
+            error = headings.text(l, "repay.invalid_amount");
+        } else if (amount.compareTo(minAmount) < 0) {
+            error = headings.text(l, "repay.below_min", Map.of("min", GeneralMethods.rwf(minAmount)));
         } else if (outstanding.signum() > 0 && amount.compareTo(outstanding) > 0) {
-            error = l.pick("Birenze ayo usigaje: ", "Amount exceeds balance: ", "Montant superieur au solde: ")
-                    + GeneralMethods.rwf(outstanding) + ".\n";
-        } else if (amount.compareTo(cfg.getMaxAmount()) > 0) {
-            error = l.pick("Ntarengwa ni ", "Maximum is ", "Le maximum est ") + GeneralMethods.rwf(cfg.getMaxAmount()) + ".\n";
+            error = headings.text(l, "repay.above_balance", Map.of("balance", GeneralMethods.rwf(outstanding)));
+        } else if (amount.compareTo(maxAmount) > 0) {
+            error = headings.text(l, "repay.above_max", Map.of("max", GeneralMethods.rwf(maxAmount)));
         }
         if (error != null) {
-            return error + l.pick("Andika amafaranga:", "Enter amount:", "Saisissez le montant:") + CommonHeadings.back(l);
+            return error + "\n" + headings.text(l, "repay.enter_amount") + headings.back(l);
         }
 
         s.setAmount(amount);
         s.setStep(STEP_CONFIRM);
         String wallet = walletName(s.getTelecom()) + " " + PhoneUtils.mask(s.getMsisdn());
         String amt = GeneralMethods.rwf(amount);
-        return l.pick(
-                "Urashaka kwishyura " + amt + " ku ideni " + s.getLoanAccountNo() + " ukoresheje " + wallet
-                        + ". Emeza?\n1. Emeza\n2. Hagarika",
-                "Pay " + amt + " to loan " + s.getLoanAccountNo() + " from " + wallet + ". Confirm?\n1. Confirm\n2. Cancel",
-                "Payer " + amt + " pour le pret " + s.getLoanAccountNo() + " depuis " + wallet
-                        + ". Confirmer?\n1. Confirmer\n2. Annuler");
+        return headings.text(l, "repay.confirm", Map.of("amount", amt, "account", s.getLoanAccountNo(),
+                "wallet", wallet)) + "\n" + headings.text(l, "repay.confirm_options");
     }
 
     private String handleConfirm(UssdSession s, String input) {
-        ELanguage l = s.getLanguage();
+        String l = s.getLanguage();
         if ("2".equals(input) || "0".equals(input)) {
             return common.endWith(s, ESessionEndReason.USER_EXIT,
-                    l.pick("Kwishyura byahagaritswe. ", "Payment cancelled. ", "Paiement annule. ")
-                            + CommonHeadings.thankYou(l));
+                    headings.text(l, "repay.cancelled") + " " + headings.thankYou(l));
         }
         if (!"1".equals(input)) {
-            return CommonHeadings.invalidChoice(l)
-                    + l.pick("1. Emeza\n2. Hagarika", "1. Confirm\n2. Cancel", "1. Confirmer\n2. Annuler");
+            return headings.invalidChoice(l)
+                    + headings.text(l, "repay.confirm_options");
         }
 
         RepaymentService.InitOutcome outcome = repaymentService.initiate(s);
         String amt = GeneralMethods.rwf(s.getAmount());
         return switch (outcome.status()) {
-            case ACCEPTED -> common.endWith(s, ESessionEndReason.COMPLETED, l.pick(
-                    "Shyiramo umubare w'ibanga wa Mobile Money ku butumwa ugiye kubona kugira ngo wemeze " + amt
-                            + ". Urabona SMS yemeza. Ref: " + outcome.tx().getReference(),
-                    "Enter your Mobile Money PIN on the prompt you will receive to approve " + amt
-                            + ". An SMS receipt will follow. Ref: " + outcome.tx().getReference(),
-                    "Entrez votre PIN Mobile Money sur la demande recue pour approuver " + amt
-                            + ". Un recu SMS suivra. Ref: " + outcome.tx().getReference()));
-            case DUPLICATE_PENDING -> common.endWith(s, ESessionEndReason.COMPLETED, l.pick(
-                    "Ufite ubwishyu bugitegereje kwemezwa. Bwemeze kuri telefoni cyangwa ugerageze nyuma y'iminota mike.",
-                    "You have a payment awaiting approval. Approve it on your phone or try again in a few minutes.",
-                    "Un paiement est en attente d'approbation. Validez-le ou reessayez dans quelques minutes."));
-            default -> common.endWith(s, ESessionEndReason.ERROR, l.pick(
-                    "Ntibyakunze kohereza icyifuzo cyo kwishyura. Mwongere mugerageze nyuma.",
-                    "The payment request could not be sent. Please try again later.",
-                    "La demande de paiement n'a pas pu etre envoyee. Reessayez plus tard."));
+            case ACCEPTED -> common.endWith(s, ESessionEndReason.COMPLETED, headings.text(l, "repay.accepted",
+                    Map.of("amount", amt, "ref", outcome.tx().getReference())));
+            case DUPLICATE_PENDING -> common.endWith(s, ESessionEndReason.COMPLETED, headings.text(l, "repay.duplicate"));
+            default -> common.endWith(s, ESessionEndReason.ERROR, headings.text(l, "repay.failed"));
         };
     }
 

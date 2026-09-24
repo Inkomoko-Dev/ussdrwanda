@@ -16,6 +16,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -38,6 +39,7 @@ import java.util.List;
  *   POST   /api/admin/demo/loans/{loanId}/repayments         {amount, date?, reference?, applyToBalance?=false}
  */
 @RestController
+@PreAuthorize("hasAuthority('DEMO_DATA_MANAGE')")
 @RequestMapping("/api/admin/demo")
 @Tag(name = "Admin - Demo core banking (pilot only)")
 @ConditionalOnExpression(DemoMode.ENABLED)
@@ -58,6 +60,7 @@ public class AdminDemoController {
             @Valid @RequestBody DemoClientRequest req) {
         DemoDataService.ClientView v = demo.createClient(req);
         audit.admin(AdminActor.current(), "DEMO_CLIENT_CREATED", v.client().getMsisdn(), true, null);
+        if (req.getOnboard() == null || req.getOnboard()) demo.onboardQuietly(v.client().getMsisdn(), AdminActor.current());
         return ResponseEntity.ok(ApiResponse.ok("Demo client created", v));
     }
 

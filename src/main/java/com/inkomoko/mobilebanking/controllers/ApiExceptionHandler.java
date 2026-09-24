@@ -8,8 +8,14 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /** Maps service-layer validation errors on the back-office API to clean JSON responses. */
-@RestControllerAdvice(basePackages = "com.inkomoko.mobilebanking.controllers.admin")
+@RestControllerAdvice(basePackages = {"com.inkomoko.mobilebanking.controllers.admin",
+        "com.inkomoko.mobilebanking.controllers.portal"})
 public class ApiExceptionHandler {
+
+    @ExceptionHandler(com.inkomoko.mobilebanking.security.AuthException.class)
+    public ResponseEntity<ApiResponse<Void>> unauthorized(com.inkomoko.mobilebanking.security.AuthException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.fail(e.getMessage()));
+    }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponse<Void>> badRequest(IllegalArgumentException e) {

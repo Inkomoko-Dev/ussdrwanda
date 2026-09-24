@@ -3,6 +3,17 @@
 # ============================================================================
 
 # ----------------------------------------------------------------------------
+# Stage 0: Admin portal (React) — built here and packaged inside the Spring Boot jar
+# ----------------------------------------------------------------------------
+FROM node:20-alpine AS portal
+WORKDIR /fe
+COPY frontend/package.json frontend/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm,id=inkomoko-ussd-npm,sharing=shared \
+    npm ci --no-audit --no-fund
+COPY frontend/ ./
+RUN PORTAL_OUT_DIR=/fe/dist npm run build
+
+# ----------------------------------------------------------------------------
 # Stage 1: Download dependencies (cached unless pom.xml changes)
 # ----------------------------------------------------------------------------
 FROM mcr.microsoft.com/openjdk/jdk:21-ubuntu AS dependencies
@@ -34,6 +45,8 @@ FROM dependencies AS builder
 ENV MAVEN_OPTS="-Xmx512m -XX:MaxMetaspaceSize=192m -XX:+UseG1GC -XX:+UseStringDeduplication -XX:ActiveProcessorCount=1"
 
 COPY src ./src
+# Portal static files -> classpath:/static/portal (served at /portal/)
+COPY --from=portal /fe/dist ./src/main/resources/static/portal
 
 RUN --mount=type=cache,target=/root/.m2,id=inkomoko-ussd-m2,sharing=shared \
     ./mvnw package -DskipTests -Dmaven.javadoc.skip=true -B -q && \

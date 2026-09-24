@@ -2,6 +2,7 @@ package com.inkomoko.mobilebanking.services.integration;
 
 import com.inkomoko.mobilebanking.models.RepaymentTransaction;
 import com.inkomoko.mobilebanking.models.dto.PaymentInitResult;
+import com.inkomoko.mobilebanking.models.dto.PaymentReversalResult;
 import com.inkomoko.mobilebanking.models.dto.PaymentStatusResult;
 
 /**
@@ -14,4 +15,7 @@ public interface PaymentGatewayService {
     PaymentInitResult requestCollection(RepaymentTransaction tx);
 
     PaymentStatusResult checkStatus(RepaymentTransaction tx);
+
+    /** Asks the telecom to return collected funds to the client. */
+    PaymentReversalResult requestReversal(RepaymentTransaction tx);
 }

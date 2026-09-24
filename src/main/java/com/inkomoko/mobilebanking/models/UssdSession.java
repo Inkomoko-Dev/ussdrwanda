@@ -1,7 +1,6 @@
 package com.inkomoko.mobilebanking.models;
 
 import com.inkomoko.mobilebanking.enums.EClientState;
-import com.inkomoko.mobilebanking.enums.ELanguage;
 import com.inkomoko.mobilebanking.enums.ESessionEndReason;
 import com.inkomoko.mobilebanking.enums.ETelecom;
 import jakarta.persistence.*;
@@ -48,8 +47,8 @@ public class UssdSession {
     private String service;            // balance | status | statement | repay | help
     private String step;               // sub-step inside the service
 
-    @Enumerated(EnumType.STRING)
-    private ELanguage language;
+    /** ISO 639 language code (ussd_language.code), e.g. "rw". */
+    private String language;
 
     // ─── Client identification / authentication ────────────────────────────
     @Enumerated(EnumType.STRING)

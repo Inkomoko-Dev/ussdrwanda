@@ -1,149 +1,204 @@
 package com.inkomoko.mobilebanking.utils.menus;
 
-import com.inkomoko.mobilebanking.enums.ELanguage;
+import com.inkomoko.mobilebanking.enums.ELoanStatus;
+import com.inkomoko.mobilebanking.enums.ECharset;
+import com.inkomoko.mobilebanking.services.LanguageService;
+import com.inkomoko.mobilebanking.services.MessageService;
+import com.inkomoko.mobilebanking.utils.i18n.MessageBundle;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
 
 /**
- * USSD screen text in Kinyarwanda, English and French (proposal §3.3.1).
- * Kinyarwanda and French wording is illustrative, pending native-speaker review before UAT.
- * GSM-7 friendly (no accents). Keep every screen within ~182 characters.
+ * Shared USSD screen texts. The wording lives in {@code i18n/ussd_<lang>.properties}
+ * (see {@link MessageService}); this class only composes screens (line breaks, prefixes, suffixes)
+ * so translators and portal editors work with whole sentences, never fragments.
  */
-public final class CommonHeadings {
+@Component
+@RequiredArgsConstructor
+public class CommonHeadings {
 
-    private CommonHeadings() {
+    private final MessageService messages;
+    private final LanguageService languageService;
+
+    /** Shortcut for any key with named parameters. */
+    public String text(String l, String key, Map<String, ?> params) {
+        return messages.text(l, key, params);
     }
 
-    // ── Screen 1: language (first screen of every session) ─────────────────
-    public static final String LANGUAGE_MENU =
-            "Murakaza neza kuri Inkomoko / Welcome to Inkomoko\n"
-            + "1. Kinyarwanda\n"
-            + "2. English\n"
-            + "3. Francais";
-
-    /** Only used on the language screen, before a language is known. */
-    public static final String INVALID_BILINGUAL = "Ntibyemewe / Invalid choice.\n";
-
-    // ── Screen 2: Terms & Conditions / privacy consent, in the chosen language ──
-    /** Bump when the consent wording changes; stored with every consent record. */
-    public static final String CONSENT_NOTICE_VERSION = "v2";
-
-    public static String consent(ELanguage l) {
-        return l.pick(
-                "Ukomeje, wemera Amategeko n'Amabwiriza ndetse n'Itangazo ry'Ibanga bya Inkomoko.\n1. Ndemera\n2. Hagarika",
-                "By continuing, you accept Inkomoko's Terms & Conditions and Privacy Notice.\n1. Accept\n2. Exit",
-                "En continuant, vous acceptez les Conditions generales et la Politique de confidentialite d'Inkomoko.\n1. J'accepte\n2. Quitter");
+    public String text(String l, String key) {
+        return messages.text(l, key);
     }
 
-    // ── Screen 3: main menu ───────────────────────────────────────────────
-    public static String mainMenu(ELanguage l) {
-        return l.pick(
-                "MENU NYAMUKURU\n1. Kureba amafaranga asigaye\n2. Uko ideni rihagaze\n3. Amakuru y'imyishyurire\n"
-                        + "4. Kwishyura ideni\n5. Ubufasha\n0. Gusohoka",
-                "MAIN MENU\n1. Check Balance\n2. Loan Status\n3. Mini Statement\n4. Repay Loan\n5. Help / FAQs\n0. Exit",
-                "MENU PRINCIPAL\n1. Consulter le solde\n2. Statut du pret\n3. Mini releve\n4. Rembourser le pret\n"
-                        + "5. Aide / FAQ\n0. Quitter");
+    // ── Language screen: shown before a language is known, so it uses every country language ──
+    public String languageMenu(List<String> languages) {
+        return languageScreen(languages, null);
+    }
+
+    public String invalidLanguage(List<String> languages) {
+        return languageScreen(languages, "common.invalid");
+    }
+
+    /**
+     * Title (and optional error line) in every offered language, then the native language names.
+     * With many languages this can outgrow one screen, so it falls back to the first language only.
+     */
+    private String languageScreen(List<String> languages, String errorKey) {
+        String options = options(languages);
+        String full = (errorKey == null ? "" : joinAll(languages, errorKey) + "\n") + joinAll(languages, "language.title")
+                + options;
+        if (full.length() <= limit(languages)) return full;
+        String first = languages.isEmpty() ? MessageBundle.REFERENCE : languages.get(0);
+        return (errorKey == null ? "" : messages.text(first, errorKey) + "\n") + messages.text(first, "language.title")
+                + options;
+    }
+
+    private String options(List<String> languages) {
+        StringBuilder sb = new StringBuilder();
+        int i = 1;
+        for (String l : languages) sb.append('\n').append(i++).append(". ").append(languageService.nativeName(l));
+        return sb.toString();
+    }
+
+    /** One non-GSM language on the screen turns the whole screen into UCS-2. */
+    private int limit(List<String> languages) {
+        boolean ucs2 = languages.stream().anyMatch(l -> languageService.charset(l) == ECharset.UCS2);
+        return (ucs2 ? ECharset.UCS2 : ECharset.GSM7).ussdMax();
+    }
+
+    private String joinAll(List<String> languages, String key) {
+        return String.join(" / ", languages.stream().map(l -> messages.text(l, key)).distinct().toList());
+    }
+
+    // ── Terms & Conditions / privacy consent ──────────────────────────────
+    public String consent(String l) {
+        return messages.text(l, "consent.text");
+    }
+
+    /**
+     * Version stored with each consent record: language + hash of the exact wording shown, so any
+     * change to the notice (release or portal edit) is traceable without bumping a constant.
+     */
+    public String consentVersion(String l) {
+        try {
+            byte[] h = MessageDigest.getInstance("SHA-256")
+                    .digest(messages.template(l, "consent.text").getBytes(StandardCharsets.UTF_8));
+            return l + "-" + HexFormat.of().formatHex(h, 0, 4);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    public String mainMenu(String l) {
+        return messages.text(l, "menu.main");
     }
 
     // ── Navigation / generic ──────────────────────────────────────────────
-    public static String back(ELanguage l) {
-        return l.pick("\n0. Subira inyuma", "\n0. Back", "\n0. Retour");
+    /** "\n0. Back" — appended under a screen. */
+    public String back(String l) {
+        return "\n" + messages.text(l, "nav.back");
     }
 
-    public static String invalidChoice(ELanguage l) {
-        return l.pick("Ibyo wahisemo sibyo.\n", "Invalid choice.\n", "Choix invalide.\n");
+    /** "Invalid choice.\n" — prefixed to the re-shown screen. */
+    public String invalidChoice(String l) {
+        return line(l, "common.invalid");
     }
 
-    public static String thankYou(ELanguage l) {
-        return l.pick("Murakoze gukoresha Inkomoko.", "Thank you for using Inkomoko.", "Merci d'utiliser Inkomoko.");
+    public String thankYou(String l) {
+        return messages.text(l, "common.thank_you");
     }
 
-    public static String serviceUnavailable(ELanguage l) {
-        return l.pick("Serivisi ntiboneka ubu. Mwongere mugerageze nyuma.",
-                "Service temporarily unavailable. Please try again later.",
-                "Service momentanement indisponible. Veuillez reessayer plus tard.");
+    public String serviceUnavailable(String l) {
+        return messages.text(l, "common.unavailable");
     }
 
-    public static String sessionExpired(ELanguage l, String serviceCode) {
-        return l.pick("Iyi session yarangiye. Kanda *" + serviceCode + "# wongere.",
-                "This session has ended. Dial *" + serviceCode + "# to start again.",
-                "Cette session est terminee. Composez *" + serviceCode + "# pour recommencer.");
+    public String sessionExpired(String l, String serviceCode) {
+        return messages.text(l, "session.expired", Map.of("code", "*" + serviceCode + "#"));
     }
 
     // ── Client identification ─────────────────────────────────────────────
-    public static String notRegistered(ELanguage l, String helpline) {
-        return l.pick("Iyi numero ntabwo yanditse muri Inkomoko. Hamagara " + helpline + " bagufashe.",
-                "This number is not registered with Inkomoko. Please call " + helpline + " for help.",
-                "Ce numero n'est pas enregistre chez Inkomoko. Appelez le " + helpline + ".");
+    public String notRegistered(String l, String helpline) {
+        return withHelpline(l, "client.not_registered", helpline);
     }
 
-    public static String inactiveClient(ELanguage l, String helpline) {
-        return l.pick("Umwirondoro wawe muri Inkomoko ntukora. Hamagara " + helpline + ".",
-                "Your Inkomoko client profile is not active. Please call " + helpline + ".",
-                "Votre profil client Inkomoko n'est pas actif. Appelez le " + helpline + ".");
+    public String notOnboarded(String l, String helpline) {
+        return withHelpline(l, "client.not_onboarded", helpline);
     }
 
-    // ── Screen 2a / 2b: PIN ───────────────────────────────────────────────
-    public static String pinSetup(ELanguage l, int digits) {
-        return l.pick("Shyiramo umubare w'ibanga (PIN) w'imibare " + digits,
-                "Create your " + digits + "-digit PIN",
-                "Creez votre code PIN a " + digits + " chiffres");
+    public String accessDisabled(String l, String helpline) {
+        return withHelpline(l, "client.access_disabled", helpline);
     }
 
-    public static String pinConfirm(ELanguage l) {
-        return l.pick("Emeza umubare w'ibanga (PIN)", "Confirm your PIN", "Confirmez votre PIN");
+    public String inactiveClient(String l, String helpline) {
+        return withHelpline(l, "client.inactive", helpline);
     }
 
-    public static String pinMismatch(ELanguage l) {
-        return l.pick("PIN ntizihura. Ongera utangire.\n", "PINs do not match. Start again.\n",
-                "Les PIN ne correspondent pas. Recommencez.\n");
+    // ── PIN ───────────────────────────────────────────────────────────────
+    public String pinSetup(String l, int digits) {
+        return messages.text(l, "pin.setup", Map.of("digits", digits));
     }
 
-    public static String pinBadFormat(ELanguage l, int digits) {
-        return l.pick("PIN igomba kuba imibare " + digits + ".\n", "PIN must be " + digits + " digits.\n",
-                "Le PIN doit comporter " + digits + " chiffres.\n");
+    public String pinConfirm(String l) {
+        return messages.text(l, "pin.confirm");
     }
 
-    public static String pinWeak(ELanguage l) {
-        return l.pick("PIN yoroshye cyane (urugero 1111, 1234).\n", "PIN too easy to guess (e.g. 1111, 1234).\n",
-                "PIN trop simple (ex. 1111, 1234).\n");
+    public String pinMismatch(String l) {
+        return line(l, "pin.mismatch");
     }
 
-    public static String pinCreated(ELanguage l) {
-        return l.pick("PIN yawe yashyizweho.\n", "Your PIN has been set.\n", "Votre PIN a ete cree.\n");
+    public String pinBadFormat(String l, int digits) {
+        return messages.text(l, "pin.bad_format", Map.of("digits", digits)) + "\n";
     }
 
-    public static String enterPin(ELanguage l, String firstName) {
-        String name = firstName == null || firstName.isBlank() ? "" : " " + firstName;
-        return l.pick("Muraho" + name + ",\nShyiramo umubare w'ibanga (PIN)",
-                "Hello" + name + ",\nEnter your PIN",
-                "Bonjour" + name + ",\nEntrez votre PIN");
+    public String pinWeak(String l) {
+        return line(l, "pin.weak");
     }
 
-    public static String wrongPin(ELanguage l, int remaining) {
-        return l.pick("PIN si yo. Usigaje amahirwe " + remaining + ".\n",
-                "Wrong PIN. " + remaining + " attempt(s) left.\n",
-                "PIN incorrect. " + remaining + " essai(s) restant(s).\n");
+    public String pinCreated(String l) {
+        return line(l, "pin.created");
     }
 
-    public static String pinLocked(ELanguage l, String helpline) {
-        return l.pick("Konti yawe yafunzwe kubera PIN itari yo inshuro nyinshi. Hamagara " + helpline
-                        + " kugira ngo bagufashe guhindura PIN.",
-                "Your access is locked after too many wrong PINs. Call " + helpline
-                        + " to verify your identity and reset your PIN.",
-                "Acces bloque apres trop de PIN incorrects. Appelez le " + helpline
-                        + " pour verifier votre identite et reinitialiser votre PIN.");
+    public String enterPin(String l, String firstName) {
+        if (firstName == null || firstName.isBlank()) return messages.text(l, "pin.enter");
+        return messages.text(l, "pin.enter.named", Map.of("name", firstName.trim()));
+    }
+
+    public String wrongPin(String l, int remaining) {
+        return messages.text(l, "pin.wrong", Map.of("remaining", remaining)) + "\n";
+    }
+
+    public String pinLocked(String l, String helpline) {
+        return withHelpline(l, "pin.locked", helpline);
     }
 
     // ── Loans ─────────────────────────────────────────────────────────────
-    public static String selectLoan(ELanguage l) {
-        return l.pick("Hitamo ideni:", "Select loan:", "Choisissez le pret:");
+    public String selectLoan(String l) {
+        return messages.text(l, "loan.select");
     }
 
-    public static String noActiveLoan(ELanguage l) {
-        return l.pick("Nta deni rikora ufite.", "You have no active loan.", "Vous n'avez aucun pret actif.");
+    public String noActiveLoan(String l) {
+        return messages.text(l, "loan.none_active");
     }
 
-    public static String noLoans(ELanguage l) {
-        return l.pick("Nta deni ufite muri Inkomoko.", "You have no loans with Inkomoko.",
-                "Vous n'avez aucun pret chez Inkomoko.");
+    public String noLoans(String l) {
+        return messages.text(l, "loan.none");
+    }
+
+    public String loanStatus(String l, ELoanStatus status) {
+        return messages.text(l, status.messageKey());
+    }
+
+    private String line(String l, String key) {
+        return messages.text(l, key) + "\n";
+    }
+
+    private String withHelpline(String l, String key, String helpline) {
+        return messages.text(l, key, Map.of("helpline", helpline == null ? "" : helpline));
     }
 }

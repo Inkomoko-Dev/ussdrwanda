@@ -20,6 +20,11 @@
 .classpath
 .settings/
 
+# Frontend: dependencies and local builds are recreated inside the image
+frontend/node_modules/
+frontend/dist/
+src/main/resources/static/portal/
+
 # Build artifacts (built inside the image)
 target/
 build/

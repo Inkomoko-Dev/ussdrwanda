@@ -1,6 +1,5 @@
 package com.inkomoko.mobilebanking.utils.menus;
 
-import com.inkomoko.mobilebanking.enums.ELanguage;
 import com.inkomoko.mobilebanking.enums.ESessionEndReason;
 import com.inkomoko.mobilebanking.models.UssdSession;
 import com.inkomoko.mobilebanking.models.dto.LoanSummaryDto;
@@ -13,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 1. Check Balance (ToR 3.1(i)) — always read live from Fineract.
@@ -31,22 +31,23 @@ public class CheckBalanceMenu {
     private static final String STEP_DISPLAY = "DISPLAY";
 
     private final CommonMenus common;
+    private final CommonHeadings headings;
     private final FineractService fineract;
     private final AuditService audit;
 
     public String processMenu(UssdSession s, String input) {
-        ELanguage l = s.getLanguage();
+        String l = s.getLanguage();
         try {
             if (s.getStep() == null) {
                 List<LoanSummaryDto> loans = fineract.getClientLoans(s.getClientId()).stream()
                         .filter(x -> x.status().isRepayable()).toList();
                 if (loans.isEmpty()) {
                     s.setStep(STEP_DISPLAY);
-                    return CommonHeadings.noActiveLoan(l) + CommonHeadings.back(l);
+                    return headings.noActiveLoan(l) + headings.back(l);
                 }
                 if (loans.size() == 1) return display(s, loans.get(0).loanId());
                 s.setStep(STEP_SELECT);
-                return common.loanSelectionScreen(s, loans, common::balanceLabel);
+                return common.loanSelectionScreen(s, loans, common::loanListLabel);
             }
             if ("0".equals(input)) return common.backToMain(s);
 
@@ -54,12 +55,12 @@ public class CheckBalanceMenu {
                 Long loanId = common.resolveLoanChoice(s, input);
                 if (loanId == null) {
                     s.setStep(null);
-                    return CommonHeadings.invalidChoice(l) + processMenu(s, null);
+                    return headings.invalidChoice(l) + processMenu(s, null);
                 }
                 return display(s, loanId);
             }
             // DISPLAY: anything other than 0 re-shows main menu options
-            return common.invalidThen(s, CommonHeadings.back(l).trim());
+            return common.invalidThen(s, headings.back(l).trim());
         } catch (Exception e) {
             log.error("Balance enquiry failed msisdn={} error={}", s.getMsisdn(), e.getMessage());
             return common.unavailable(s);
@@ -67,7 +68,7 @@ public class CheckBalanceMenu {
     }
 
     private String display(UssdSession s, Long loanId) {
-        ELanguage l = s.getLanguage();
+        String l = s.getLanguage();
         LoanSummaryDto d = fineract.getLoanDetails(loanId);
         if (d.clientId() != null && !d.clientId().equals(s.getClientId())) {
             log.warn("Loan {} does not belong to client {}", loanId, s.getClientId());
@@ -82,13 +83,8 @@ public class CheckBalanceMenu {
         String overdue = GeneralMethods.rwf(d.totalOverdue());
         String due = DateUtility.screenDate(d.nextDueDate());
         String inst = d.nextInstallment() == null ? "-" : GeneralMethods.rwf(d.nextInstallment());
-        return l.pick(
-                "Ideni " + d.accountNo() + "\nAmafaranga y'ideni: " + principal + "\nAyo usigaje: " + total
-                        + "\nAyarengeje igihe: " + overdue + "\nItariki ikurikira: " + due + "\nIcyiciro: " + inst,
-                "Loan " + d.accountNo() + "\nPrincipal: " + principal + "\nTotal balance: " + total
-                        + "\nOverdue: " + overdue + "\nNext due: " + due + "\nInstallment: " + inst,
-                "Pret " + d.accountNo() + "\nCapital: " + principal + "\nSolde total: " + total
-                        + "\nEn retard: " + overdue + "\nEcheance: " + due + "\nMensualite: " + inst)
-                + CommonHeadings.back(l);
+        return headings.text(l, "balance.screen", Map.of("account", d.accountNo(), "principal", principal,
+                "total", total, "overdue", overdue, "due", due, "installment", inst))
+                + headings.back(l);
     }
 }

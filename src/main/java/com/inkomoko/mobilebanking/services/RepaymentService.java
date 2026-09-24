@@ -1,11 +1,11 @@
 package com.inkomoko.mobilebanking.services;
 
 import com.inkomoko.mobilebanking.config.InkomokoProperties;
-import com.inkomoko.mobilebanking.enums.ELanguage;
 import com.inkomoko.mobilebanking.enums.ETransactionStatus;
 import com.inkomoko.mobilebanking.models.RepaymentTransaction;
 import com.inkomoko.mobilebanking.models.UssdSession;
 import com.inkomoko.mobilebanking.models.dto.PaymentInitResult;
+import com.inkomoko.mobilebanking.models.dto.PaymentReversalResult;
 import com.inkomoko.mobilebanking.models.dto.PaymentStatusResult;
 import com.inkomoko.mobilebanking.repositories.RepaymentTransactionRepository;
 import com.inkomoko.mobilebanking.services.integration.FineractService;
@@ -46,6 +46,10 @@ public class RepaymentService {
     public record InitOutcome(InitStatus status, RepaymentTransaction tx) {
     }
 
+    /** What the telecom reported, and the repayment status after this check. */
+    public record TelecomCheck(String telecomStatus, String transactionStatus, String message) {
+    }
+
     private enum CallbackOutcome { NOT_FOUND, ALREADY_PROCESSED, PAID, FAILED, REVIEW, STILL_PENDING }
 
     private final RepaymentTransactionRepository repo;
@@ -56,11 +60,14 @@ public class RepaymentService {
     private final LanguagePreferenceService languages;
     private final InkomokoProperties props;
     private final TransactionTemplate tx;
+    private final CountryService countries;
+    private final MessageService messages;
 
     public RepaymentService(RepaymentTransactionRepository repo, PaymentGatewayService gateway,
                             FineractService fineract, SmsService sms, AuditService audit,
                             LanguagePreferenceService languages, InkomokoProperties props,
-                            PlatformTransactionManager txManager) {
+                            PlatformTransactionManager txManager, CountryService countries,
+                            MessageService messages) {
         this.repo = repo;
         this.gateway = gateway;
         this.fineract = fineract;
@@ -69,6 +76,8 @@ public class RepaymentService {
         this.languages = languages;
         this.props = props;
         this.tx = new TransactionTemplate(txManager);
+        this.countries = countries;
+        this.messages = messages;
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -94,7 +103,7 @@ public class RepaymentService {
         t.setLoanId(s.getLoanId());
         t.setLoanAccountNo(s.getLoanAccountNo());
         t.setAmount(s.getAmount());
-        t.setCurrency(props.getRepayment().getCurrency());
+        t.setCurrency(countries.currency());
         t.setTelecom(s.getTelecom());
         t.setStatus(ETransactionStatus.INITIATED);
         t.setConfirmedAt(now);
@@ -283,29 +292,111 @@ public class RepaymentService {
     }
 
     // ══════════════════════════════════════════════════════════════════════
+    //  Staff actions
+    // ══════════════════════════════════════════════════════════════════════
+
+    /** Asks the telecom for the latest result. A newly paid collection is posted to the loan. */
+    public TelecomCheck checkTelecom(String reference, String by) {
+        RepaymentTransaction current = require(reference);
+        PaymentStatusResult status;
+        try {
+            status = gateway.checkStatus(current);
+        } catch (Exception e) {
+            throw new IllegalStateException("Telecom status check failed: " + e.getMessage());
+        }
+        boolean open = current.getStatus() == ETransactionStatus.INITIATED
+                || current.getStatus() == ETransactionStatus.PENDING
+                || (current.getStatus() == ETransactionStatus.NEEDS_REVIEW && current.getPaidAt() == null);
+        if (open && (status.isSuccess() || status.isFailed())) {
+            handleGatewayResult(reference, status);
+        }
+        RepaymentTransaction after = require(reference);
+        audit.admin(by, "TELECOM_STATUS_CHECKED", reference, true,
+                "telecom=" + status.status() + " repayment=" + after.getStatus());
+        String message = status.message() == null ? "Telecom status: " + status.status() : status.message();
+        return new TelecomCheck(status.status(), after.getStatus().name(), message);
+    }
+
+    /** Posts a collected repayment onto the loan. Safe to repeat: the reference is the external id. */
+    public RepaymentTransaction postCollected(String reference, String by) {
+        RepaymentTransaction t = require(reference);
+        if (t.getStatus() == ETransactionStatus.POSTED) return t;
+        if (t.getPaidAt() == null && t.getStatus() != ETransactionStatus.PAID
+                && t.getStatus() != ETransactionStatus.POSTING_FAILED) {
+            throw new IllegalStateException("The telecom has not confirmed this collection, so it cannot be posted");
+        }
+        if (t.getStatus() == ETransactionStatus.NEEDS_REVIEW) {
+            tx.executeWithoutResult(st -> repo.lockByReference(reference).ifPresent(row -> {
+                if (row.getStatus() == ETransactionStatus.NEEDS_REVIEW) {
+                    row.setStatus(ETransactionStatus.POSTING_FAILED);
+                    row.setUpdatedAt(DateUtility.nowKigali());
+                    repo.save(row);
+                }
+            }));
+        }
+        boolean posted = postToFineract(reference);
+        RepaymentTransaction after = require(reference);
+        if (!posted) {
+            throw new IllegalStateException(after.getFailureReason() == null
+                    ? "Core banking did not accept the posting" : after.getFailureReason());
+        }
+        audit.admin(by, "REPAYMENT_POSTED_MANUAL", reference, true, "fineractTxnId=" + after.getFineractTxnId());
+        return after;
+    }
+
+    /**
+     * Undoes a posted repayment: reverses the loan entry, then asks the telecom to refund the client.
+     * If the refund is refused, the row stays in review with the loan already reversed.
+     */
+    public RepaymentTransaction reversePosted(String reference, String by) {
+        RepaymentTransaction t = require(reference);
+        if (t.getStatus() != ETransactionStatus.POSTED) {
+            throw new IllegalStateException("Only a posted repayment can be reversed");
+        }
+        if (t.getFineractTxnId() == null || t.getFineractTxnId().isBlank()) {
+            throw new IllegalStateException("This repayment has no core-banking transaction to reverse");
+        }
+        fineract.reverseRepayment(t.getLoanId(), t.getFineractTxnId());
+        PaymentReversalResult refund = gateway.requestReversal(t);
+        RepaymentTransaction saved = tx.execute(st -> {
+            RepaymentTransaction row = repo.lockByReference(reference).orElseThrow();
+            LocalDateTime now = DateUtility.nowKigali();
+            if (refund.accepted()) {
+                row.setStatus(ETransactionStatus.REVERSED);
+                row.setFailureReason("Reversed: loan undone and client refunded");
+            } else {
+                row.setStatus(ETransactionStatus.NEEDS_REVIEW);
+                row.setFailureReason(trim("Loan reversed, telecom refund failed: " + refund.message()));
+            }
+            row.setUpdatedAt(now);
+            return repo.save(row);
+        });
+        audit.admin(by, "REPAYMENT_REVERSED", reference, refund.accepted(), saved.getFailureReason());
+        return saved;
+    }
+
+    private RepaymentTransaction require(String reference) {
+        return repo.findByReference(reference)
+                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + reference));
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
     //  SMS
     // ══════════════════════════════════════════════════════════════════════
 
     private void sendReceiptSms(RepaymentTransaction t) {
-        ELanguage l = languages.preferredLanguage(t.getMsisdn());
+        String l = languages.preferredLanguage(t.getMsisdn());
         String amount = GeneralMethods.rwf(t.getAmount());
         String balance = t.getBalanceAfter() == null ? "-" : GeneralMethods.rwf(t.getBalanceAfter());
-        sms.send(t.getMsisdn(), l.pick(
-                "Inkomoko: Kwishyura " + amount + " ku ideni " + t.getLoanAccountNo() + " byagenze neza. Amafaranga asigaye: "
-                        + balance + ". Ref: " + t.getReference(),
-                "Inkomoko: Payment of " + amount + " to loan " + t.getLoanAccountNo() + " received. New balance: "
-                        + balance + ". Ref: " + t.getReference(),
-                "Inkomoko: Paiement de " + amount + " recu pour le pret " + t.getLoanAccountNo() + ". Nouveau solde: "
-                        + balance + ". Ref: " + t.getReference()));
+        sms.send(t.getMsisdn(), messages.text(l, "sms.repay.success", java.util.Map.of("amount", amount,
+                "account", String.valueOf(t.getLoanAccountNo()), "balance", balance, "ref", t.getReference())));
     }
 
     private void sendFailureSms(RepaymentTransaction t) {
-        ELanguage l = languages.preferredLanguage(t.getMsisdn());
+        String l = languages.preferredLanguage(t.getMsisdn());
         String amount = GeneralMethods.rwf(t.getAmount());
-        sms.send(t.getMsisdn(), l.pick(
-                "Inkomoko: Kwishyura " + amount + " ntibyakunze. Nta mafaranga yakuwe kuri konti yawe. Ref: " + t.getReference(),
-                "Inkomoko: Your payment of " + amount + " was not completed. You have not been charged. Ref: " + t.getReference(),
-                "Inkomoko: Votre paiement de " + amount + " n'a pas abouti. Aucun montant debite. Ref: " + t.getReference()));
+        sms.send(t.getMsisdn(), messages.text(l, "sms.repay.failed",
+                java.util.Map.of("amount", amount, "ref", t.getReference())));
     }
 
     private static String trim(String s) {
@@ -314,6 +405,6 @@ public class RepaymentService {
     }
 
     public BigDecimal minAmount() {
-        return props.getRepayment().getMinAmount();
+        return countries.minRepayment();
     }
 }

@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -26,11 +27,13 @@ public class AdminFaqController {
     private final AuditService audit;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('FAQ_VIEW')")
     public ResponseEntity<ApiResponse<List<FaqItem>>> list() {
         return ResponseEntity.ok(ApiResponse.ok("FAQ items", repo.findAllByOrderByLanguageAscDisplayOrderAsc()));
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('FAQ_MANAGE')")
     public ResponseEntity<ApiResponse<FaqItem>> create(@Valid @RequestBody FaqRequest req) {
         FaqItem item = new FaqItem();
         item.setCreatedAt(DateUtility.nowKigali());
@@ -41,6 +44,7 @@ public class AdminFaqController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('FAQ_MANAGE')")
     public ResponseEntity<ApiResponse<FaqItem>> update(@PathVariable Long id, @Valid @RequestBody FaqRequest req) {
         FaqItem item = repo.findById(id).orElseThrow(() -> new IllegalArgumentException("FAQ item not found: " + id));
         apply(item, req);
@@ -50,6 +54,7 @@ public class AdminFaqController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('FAQ_MANAGE')")
     public ResponseEntity<ApiResponse<Void>> deactivate(@PathVariable Long id) {
         FaqItem item = repo.findById(id).orElseThrow(() -> new IllegalArgumentException("FAQ item not found: " + id));
         item.setActive(false);
@@ -60,7 +65,7 @@ public class AdminFaqController {
     }
 
     private static void apply(FaqItem item, FaqRequest req) {
-        item.setLanguage(req.getLanguage());
+        item.setLanguage(req.getLanguage().trim().toLowerCase());
         item.setTitle(req.getTitle().trim());
         item.setBody(req.getBody().trim());
         item.setDisplayOrder(req.getDisplayOrder() == null ? 0 : req.getDisplayOrder());

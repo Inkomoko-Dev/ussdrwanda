@@ -82,7 +82,7 @@ public class FineractRestService implements FineractService {
                     if (c != null && PhoneUtils.samePhone(c.mobileNo(), msisdn)) {
                         boolean active = Boolean.TRUE.equals(c.active())
                                 || (c.status() != null && Integer.valueOf(300).equals(c.status().id()));
-                        return Optional.of(new ClientDto(c.id(), c.displayName(), c.mobileNo(), active));
+                        return Optional.of(toClient(c, active));
                     }
                 }
             }
@@ -90,6 +90,47 @@ public class FineractRestService implements FineractService {
         } catch (RestClientException e) {
             throw new FineractException("Client lookup failed: " + e.getMessage(), e);
         }
+    }
+
+    @Override
+    public Optional<ClientDto> findClientById(Long clientId) {
+        if (clientId == null) return Optional.empty();
+        try {
+            FineractDtos.Client c = client.get().uri("/clients/{id}", clientId).retrieve().body(FineractDtos.Client.class);
+            if (c == null) return Optional.empty();
+            boolean active = Boolean.TRUE.equals(c.active())
+                    || (c.status() != null && Integer.valueOf(300).equals(c.status().id()));
+            return Optional.of(toClient(c, active));
+        } catch (RestClientException e) {
+            throw new FineractException("Client lookup failed: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void updateClient(Long clientId, String displayName, String mobileNo, String email) {
+        String name = displayName == null ? "" : displayName.trim();
+        int split = name.lastIndexOf(' ');
+        String first = split < 0 ? name : name.substring(0, split);
+        String last = split < 0 ? name : name.substring(split + 1);
+        try {
+            client.put().uri("/clients/{id}", clientId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "firstname", first,
+                            "lastname", last,
+                            "mobileNo", mobileNo,
+                            "emailAddress", email == null ? "" : email,
+                            "locale", "en",
+                            "dateFormat", "dd MMMM yyyy"))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            throw new FineractException("Client update failed: " + e.getMessage(), e);
+        }
+    }
+
+    private static ClientDto toClient(FineractDtos.Client c, boolean active) {
+        return new ClientDto(c.id(), c.displayName(), c.mobileNo(), c.emailAddress(), active);
     }
 
     @Override
@@ -204,6 +245,26 @@ public class FineractRestService implements FineractService {
             return String.valueOf(r.resourceId());
         } catch (RestClientException e) {
             throw new FineractException("Repayment posting failed: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void reverseRepayment(Long loanId, String fineractTxnId) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("dateFormat", "dd MMMM yyyy");
+        body.put("locale", "en");
+        body.put("transactionDate", DateUtility.todayKigali().format(FINERACT_DATE));
+        body.put("transactionAmount", 0);
+        try {
+            client.post()
+                    .uri(u -> u.path("/loans/{loanId}/transactions/{txnId}")
+                            .queryParam("command", "undo").build(loanId, fineractTxnId))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            throw new FineractException("Repayment reversal failed: " + e.getMessage(), e);
         }
     }
 }

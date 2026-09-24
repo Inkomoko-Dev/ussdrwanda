@@ -47,7 +47,30 @@ public class DemoFineractService implements FineractService {
         if (c.isEmpty()) {
             log.info("[DEMO CORE BANKING] {} is not an allowed demo number (add it via POST /api/admin/demo/clients)", msisdn);
         }
-        return c.map(x -> new ClientDto(x.getId(), x.getDisplayName(), x.getMsisdn(), x.isActive()));
+        return c.map(DemoFineractService::toClient);
+    }
+
+    @Override
+    public Optional<ClientDto> findClientById(Long clientId) {
+        return clientId == null ? Optional.empty() : clientRepo.findById(clientId).map(DemoFineractService::toClient);
+    }
+
+    @Override
+    @Transactional
+    public void updateClient(Long clientId, String displayName, String mobileNo, String email) {
+        DemoClient c = clientRepo.findById(clientId).orElseThrow(() -> new FineractException("Client " + clientId + " not found"));
+        clientRepo.findByMsisdn(mobileNo).filter(other -> !other.getId().equals(c.getId())).ifPresent(other -> {
+            throw new FineractException("Core banking already has a client with phone " + mobileNo);
+        });
+        c.setDisplayName(displayName);
+        c.setMsisdn(mobileNo);
+        c.setEmail(email);
+        c.setUpdatedAt(DateUtility.nowKigali());
+        clientRepo.save(c);
+    }
+
+    private static ClientDto toClient(DemoClient x) {
+        return new ClientDto(x.getId(), x.getDisplayName(), x.getMsisdn(), x.getEmail(), x.isActive());
     }
 
     @Override
@@ -89,6 +112,25 @@ public class DemoFineractService implements FineractService {
         log.info("[DEMO CORE BANKING] repayment posted loanId={} amount={} txnId={} newBalance={}",
                 loanId, amount, r.getId(), loan.getTotalOutstanding());
         return String.valueOf(r.getId());
+    }
+
+    @Override
+    @Transactional
+    public void reverseRepayment(Long loanId, String fineractTxnId) {
+        long id;
+        try {
+            id = Long.parseLong(fineractTxnId);
+        } catch (NumberFormatException e) {
+            throw new FineractException("Unknown core-banking transaction " + fineractTxnId);
+        }
+        DemoRepayment repayment = repaymentRepo.findById(id)
+                .orElseThrow(() -> new FineractException("Core-banking transaction " + fineractTxnId + " not found"));
+        DemoLoan loan = loanRepo.lockById(loanId).orElseThrow(() -> new FineractException("Loan " + loanId + " not found"));
+        loan.setPrincipalOutstanding(nz(loan.getPrincipalOutstanding()).add(nz(repayment.getAmount())));
+        if (loan.getStatus() == ELoanStatus.SETTLED) loan.setStatus(ELoanStatus.ACTIVE);
+        loan.setUpdatedAt(DateUtility.nowKigali());
+        loanRepo.save(loan);
+        repaymentRepo.delete(repayment);
     }
 
     DemoRepayment saveRepayment(Long loanId, BigDecimal amount, LocalDate date, String reference) {

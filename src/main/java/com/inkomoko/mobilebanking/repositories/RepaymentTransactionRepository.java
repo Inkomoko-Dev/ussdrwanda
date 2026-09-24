@@ -34,6 +34,19 @@ public interface RepaymentTransactionRepository extends JpaRepository<RepaymentT
 
     Page<RepaymentTransaction> findAllByOrderByCreatedAtDesc(Pageable pageable);
 
+    @Query("""
+            select r from RepaymentTransaction r
+            where (:status is null or r.status = :status)
+              and (:q is null or :q = ''
+                   or lower(r.reference) like lower(concat('%', :q, '%'))
+                   or r.msisdn like concat('%', :q, '%')
+                   or lower(coalesce(r.loanAccountNo, '')) like lower(concat('%', :q, '%'))
+                   or lower(coalesce(r.telecomRef, '')) like lower(concat('%', :q, '%'))
+                   or lower(coalesce(r.gatewayRef, '')) like lower(concat('%', :q, '%')))
+            order by r.createdAt desc
+            """)
+    Page<RepaymentTransaction> search(@Param("q") String q, @Param("status") ETransactionStatus status, Pageable pageable);
+
     @Query("select r.status, count(r), coalesce(sum(r.amount), 0) from RepaymentTransaction r " +
            "where r.createdAt between :from and :to group by r.status")
     List<Object[]> summarizeByStatus(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);

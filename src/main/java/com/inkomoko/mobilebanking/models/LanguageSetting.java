@@ -1,6 +1,5 @@
 package com.inkomoko.mobilebanking.models;
 
-import com.inkomoko.mobilebanking.enums.ELanguage;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -23,12 +22,12 @@ public class LanguageSetting {
     @Column(unique = true)
     private String msisdn;
 
-    @Enumerated(EnumType.STRING)
-    private ELanguage language;
+    /** ISO 639 language code (ussd_language.code), e.g. "rw". */
+    private String language;
 
     private LocalDateTime updatedAt;
 
-    public LanguageSetting(String msisdn, ELanguage language, LocalDateTime updatedAt) {
+    public LanguageSetting(String msisdn, String language, LocalDateTime updatedAt) {
         this.msisdn = msisdn;
         this.language = language;
         this.updatedAt = updatedAt;

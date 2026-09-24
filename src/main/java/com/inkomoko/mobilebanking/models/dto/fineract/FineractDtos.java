@@ -23,7 +23,7 @@ public final class FineractDtos {
 
     /** GET /clients/{clientId} */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Client(Long id, String displayName, String mobileNo, Boolean active, Status status) {
+    public record Client(Long id, String displayName, String mobileNo, String emailAddress, Boolean active, Status status) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

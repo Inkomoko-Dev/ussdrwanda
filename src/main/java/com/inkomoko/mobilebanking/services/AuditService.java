@@ -3,6 +3,7 @@ package com.inkomoko.mobilebanking.services;
 import com.inkomoko.mobilebanking.enums.EChannel;
 import com.inkomoko.mobilebanking.models.AuditLog;
 import com.inkomoko.mobilebanking.repositories.AuditLogRepository;
+import com.inkomoko.mobilebanking.utils.ClientIp;
 import com.inkomoko.mobilebanking.utils.DateUtility;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,11 +18,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuditService {
 
     private final AuditLogRepository repo;
+    private final IpCountryResolver countries;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void log(String actor, EChannel channel, String action, String resource, String sessionId,
                     boolean success, String detail) {
         try {
+            String ip = ClientIp.current();
             repo.save(AuditLog.builder()
                     .actor(actor == null ? "UNKNOWN" : actor)
                     .channel(channel)
@@ -30,6 +33,8 @@ public class AuditService {
                     .sessionId(sessionId)
                     .success(success)
                     .detail(detail != null && detail.length() > 500 ? detail.substring(0, 500) : detail)
+                    .ipAddress(ip)
+                    .ipCountry(countries.countryOf(ip))
                     .loggedAt(DateUtility.nowKigali())
                     .build());
         } catch (Exception e) {

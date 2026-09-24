@@ -1,6 +1,5 @@
 package com.inkomoko.mobilebanking.utils.menus;
 
-import com.inkomoko.mobilebanking.enums.ELanguage;
 import com.inkomoko.mobilebanking.models.FaqItem;
 import com.inkomoko.mobilebanking.models.UssdSession;
 import com.inkomoko.mobilebanking.services.AuditService;
@@ -10,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 5. Help / FAQs (ToR 3.1(vi)) — content comes from the faq_item table (editable via
@@ -29,11 +29,12 @@ public class HelpMenu {
     private static final int MAX_ITEMS = 7;
 
     private final CommonMenus common;
+    private final CommonHeadings headings;
     private final FaqService faqService;
     private final AuditService audit;
 
     public String processMenu(UssdSession s, String input) {
-        ELanguage l = s.getLanguage();
+        String l = s.getLanguage();
         List<FaqItem> items = faqService.activeItems(l).stream().limit(MAX_ITEMS).toList();
 
         if (s.getStep() == null) {
@@ -42,25 +43,25 @@ public class HelpMenu {
         }
         if (STEP_ITEM.equals(s.getStep())) {
             if ("0".equals(input)) return list(s, items);
-            return common.invalidThen(s, CommonHeadings.back(l).trim());
+            return common.invalidThen(s, headings.back(l).trim());
         }
         // STEP_LIST
         if ("0".equals(input)) return common.backToMain(s);
         int choice = GeneralMethods.parseInputAsInteger(input);
-        if (choice < 1 || choice > items.size()) return CommonHeadings.invalidChoice(l) + list(s, items);
+        if (choice < 1 || choice > items.size()) return headings.invalidChoice(l) + list(s, items);
         s.setStep(STEP_ITEM);
-        return items.get(choice - 1).getBody() + CommonHeadings.back(l);
+        return items.get(choice - 1).getBody() + headings.back(l);
     }
 
     private String list(UssdSession s, List<FaqItem> items) {
-        ELanguage l = s.getLanguage();
+        String l = s.getLanguage();
         s.setStep(STEP_LIST);
-        StringBuilder sb = new StringBuilder(l.pick("UBUFASHA", "HELP", "AIDE"));
+        StringBuilder sb = new StringBuilder(headings.text(l, "help.header"));
         if (items.isEmpty()) {
-            sb.append('\n').append(l.pick("Hamagara ", "Call ", "Appelez le ")).append(common.helpline());
+            sb.append('\n').append(headings.text(l, "help.call", Map.of("helpline", common.helpline())));
         }
         int i = 1;
         for (FaqItem item : items) sb.append('\n').append(i++).append(". ").append(item.getTitle());
-        return sb.append(CommonHeadings.back(l)).toString();
+        return sb.append(headings.back(l)).toString();
     }
 }

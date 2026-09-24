@@ -8,7 +8,18 @@ import java.util.Locale;
 
 public class GeneralMethods {
 
+    /** Currency shown on USSD screens; set from the active country profile (CountryService). */
+    private static volatile String currency = "RWF";
+
     private GeneralMethods() {
+    }
+
+    public static void setCurrency(String code) {
+        if (code != null && !code.isBlank()) currency = code.trim().toUpperCase();
+    }
+
+    public static String currency() {
+        return currency;
     }
 
     public static int parseInputAsInteger(String input) {
@@ -36,7 +47,7 @@ public class GeneralMethods {
     }
 
     public static String rwf(BigDecimal amount) {
-        return "RWF " + formatAmount(amount);
+        return currency + " " + formatAmount(amount);
     }
 
     public static BigDecimal nz(BigDecimal v) {

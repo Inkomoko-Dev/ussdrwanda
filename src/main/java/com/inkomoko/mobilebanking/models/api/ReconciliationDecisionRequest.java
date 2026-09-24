@@ -12,10 +12,4 @@ import lombok.Setter;
 public class ReconciliationDecisionRequest {
     @Size(max = 500)
     private String comment;
-    /**
-     * Operator name for maker/checker (maker and checker must differ). Optional; defaults to
-     * the current admin user. Will come from the JWT principal once security is enabled.
-     */
-    @Size(max = 100)
-    private String operator;
 }

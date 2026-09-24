@@ -10,6 +10,9 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
+import com.inkomoko.mobilebanking.models.dto.PaymentReversalResult;
+import com.inkomoko.mobilebanking.utils.DateUtility;
+
 import java.math.BigDecimal;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -55,6 +58,26 @@ public class MockPaymentGatewayService implements PaymentGatewayService {
 
     @Override
     public PaymentStatusResult checkStatus(RepaymentTransaction tx) {
-        return new PaymentStatusResult("PENDING", tx.getGatewayRef(), null, null, "mock");
+        String gwRef = tx.getGatewayRef() != null ? tx.getGatewayRef() : "MOCKGW-" + tx.getReference();
+        boolean fail = fails(tx.getAmount());
+        boolean ready = tx.getCreatedAt() == null
+                || !tx.getCreatedAt().plusSeconds(delaySeconds).isAfter(DateUtility.nowKigali());
+        if (!ready) {
+            return new PaymentStatusResult("PENDING", gwRef, null, null, "Awaiting client PIN (mock)");
+        }
+        if (fail) {
+            return new PaymentStatusResult("FAILED", gwRef, null, null, "Insufficient funds (mock)");
+        }
+        return new PaymentStatusResult("SUCCESS", gwRef, "MOCKMNO" + tx.getReference(), tx.getAmount(), "Approved (mock)");
+    }
+
+    @Override
+    public PaymentReversalResult requestReversal(RepaymentTransaction tx) {
+        log.info("[MOCK GW] refund accepted ref={} amount={}", tx.getReference(), tx.getAmount());
+        return new PaymentReversalResult(true, "Refund accepted (mock)");
+    }
+
+    private static boolean fails(BigDecimal amount) {
+        return amount != null && amount.toBigInteger().mod(java.math.BigInteger.valueOf(100)).intValue() == 13;
     }
 }

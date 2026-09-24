@@ -37,4 +37,12 @@ public class ClientPin {
     private LocalDateTime updatedAt;
     private LocalDateTime lockedAt;
     private LocalDateTime lastLoginAt;
+
+    // ─── Onboarding metadata ────────────────────────────────────────────────
+    private String clientName;
+    private String email;
+    /** SELF (registered on first dial) | PORTAL (onboarded by staff). */
+    private String registrationChannel;
+    private String onboardedBy;
+    private LocalDateTime onboardedAt;
 }

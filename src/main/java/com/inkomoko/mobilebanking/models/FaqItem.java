@@ -1,6 +1,5 @@
 package com.inkomoko.mobilebanking.models;
 
-import com.inkomoko.mobilebanking.enums.ELanguage;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -23,8 +22,8 @@ public class FaqItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Enumerated(EnumType.STRING)
-    private ELanguage language;
+    /** ISO 639 language code (ussd_language.code), e.g. "rw". */
+    private String language;
 
     /** Short menu label, e.g. "Office locations". */
     private String title;

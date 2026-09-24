@@ -23,6 +23,7 @@ public class InkomokoProperties {
     private Payment payment = new Payment();
     private Sms sms = new Sms();
     private Demo demo = new Demo();
+    private Security security = new Security();
 
     @Getter @Setter
     public static class Ussd {
@@ -83,6 +84,17 @@ public class InkomokoProperties {
         private String baseUrl;
         private String apiKey;
         private String senderId = "INKOMOKO";
+    }
+
+    /** Admin portal security. */
+    @Getter @Setter
+    public static class Security {
+        /** HMAC secret for portal JWTs (HS256): at least 32 characters. Set JWT_SECRET in every environment. */
+        private String jwtSecret;
+        /** Super Administrator created on first start-up (when no portal user exists). */
+        private String bootstrapAdminEmail = "admin@yopmail.com";
+        private String bootstrapAdminPassword;
+        private String bootstrapAdminName = "System Administrator";
     }
 
     /** Demo core banking (only used when fineract.mode is not live). */

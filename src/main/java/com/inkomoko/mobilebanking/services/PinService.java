@@ -38,7 +38,8 @@ public class PinService {
     @Transactional
     public EClientState resolveState(String msisdn, Long clientId, String sessionId) {
         Optional<ClientPin> opt = pinRepo.findByMsisdn(msisdn);
-        if (opt.isEmpty()) return EClientState.PIN_NOT_SET;
+        // No record: the client has not been onboarded by Inkomoko staff (portal → Customers → Onboard).
+        if (opt.isEmpty()) return EClientState.NOT_ONBOARDED;
         ClientPin pin = opt.get();
         // Number now belongs to a different Fineract client (recycled SIM): old PIN must not work.
         if (pin.getClientId() != null && clientId != null && !pin.getClientId().equals(clientId)) {
@@ -54,6 +55,7 @@ public class PinService {
             case LOCKED -> EClientState.LOCKED;
             case ACTIVE -> pin.getPinHash() == null ? EClientState.PIN_NOT_SET : EClientState.ACTIVE;
             case NOT_SET -> EClientState.PIN_NOT_SET;
+            case DISABLED -> EClientState.DISABLED;
         };
     }
 
@@ -84,14 +86,16 @@ public class PinService {
     }
 
     @Transactional
-    public void setPin(String msisdn, Long clientId, String rawPin) {
+    public void setPin(String msisdn, Long clientId, String clientName, String rawPin) {
         LocalDateTime now = DateUtility.nowKigali();
         ClientPin pin = pinRepo.findByMsisdn(msisdn).orElseGet(() -> {
             ClientPin p = new ClientPin();
             p.setMsisdn(msisdn);
             p.setCreatedAt(now);
+            p.setRegistrationChannel("SELF");
             return p;
         });
+        if (clientName != null && !clientName.isBlank()) pin.setClientName(clientName);
         pin.setClientId(clientId);
         pin.setPinHash(encoder.encode(rawPin));
         pin.setStatus(EPinStatus.ACTIVE);
@@ -106,7 +110,7 @@ public class PinService {
     @Transactional
     public VerifyResult verify(String msisdn, String rawPin) {
         ClientPin pin = pinRepo.findByMsisdn(msisdn).orElse(null);
-        if (pin == null || pin.getStatus() == EPinStatus.LOCKED) return VerifyResult.LOCKED;
+        if (pin == null || pin.getStatus() == EPinStatus.LOCKED || pin.getStatus() == EPinStatus.DISABLED) return VerifyResult.LOCKED;
 
         if (isValidFormat(rawPin) && matches(rawPin, pin.getPinHash())) {
             attemptRepo.findByMsisdn(msisdn).ifPresent(attemptRepo::delete);
@@ -146,7 +150,7 @@ public class PinService {
         if (opt.isEmpty()) return false;
         ClientPin pin = opt.get();
         pin.setPinHash(null);
-        pin.setStatus(EPinStatus.NOT_SET);
+        if (pin.getStatus() != EPinStatus.DISABLED) pin.setStatus(EPinStatus.NOT_SET);
         pin.setLockedAt(null);
         pin.setUpdatedAt(DateUtility.nowKigali());
         pinRepo.save(pin);
@@ -160,7 +164,9 @@ public class PinService {
         Optional<ClientPin> opt = pinRepo.findByMsisdn(msisdn);
         if (opt.isEmpty()) return false;
         ClientPin pin = opt.get();
-        pin.setStatus(pin.getPinHash() == null ? EPinStatus.NOT_SET : EPinStatus.ACTIVE);
+        if (pin.getStatus() != EPinStatus.DISABLED) {
+            pin.setStatus(pin.getPinHash() == null ? EPinStatus.NOT_SET : EPinStatus.ACTIVE);
+        }
         pin.setLockedAt(null);
         pin.setUpdatedAt(DateUtility.nowKigali());
         pinRepo.save(pin);

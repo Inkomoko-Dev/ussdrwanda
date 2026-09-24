@@ -14,6 +14,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -29,6 +30,7 @@ public class AdminReportController {
     private final AuditLogRepository auditRepo;
 
     @GetMapping("/reports/summary")
+    @PreAuthorize("hasAuthority('DASHBOARD_VIEW')")
     @Operation(summary = "Sessions, completion/abandonment, response time, auth failures, repayments by status")
     public ResponseEntity<ApiResponse<ReportSummary>> summary(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -40,6 +42,7 @@ public class AdminReportController {
     }
 
     @GetMapping("/audit-logs")
+    @PreAuthorize("hasAuthority('AUDIT_VIEW')")
     public ResponseEntity<ApiResponse<Page<AuditLog>>> audit(
             @RequestParam(required = false) String actor,
             @RequestParam(defaultValue = "0") int page,

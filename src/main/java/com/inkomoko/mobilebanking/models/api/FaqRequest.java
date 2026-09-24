@@ -1,6 +1,5 @@
 package com.inkomoko.mobilebanking.models.api;
 
-import com.inkomoko.mobilebanking.enums.ELanguage;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -13,7 +12,7 @@ import lombok.Setter;
 @NoArgsConstructor
 public class FaqRequest {
     @NotNull
-    private ELanguage language;
+    private String language;
     @NotBlank
     @Size(max = 40)
     private String title;

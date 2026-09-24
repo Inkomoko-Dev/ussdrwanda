@@ -3,92 +3,251 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>USSD Simulator</title>
+<title>Inkomoko USSD simulator</title>
 <style>
-  :root { --bg:#f4f5f7; --card:#fff; --ink:#1d2330; --muted:#6b7280; --accent:#0a7d4f; --line:#d9dde3; }
+  :root {
+    --navy:#00205f; --coral:#ea4e35; --sky:#5dc5e9; --ink:#1c2430; --muted:#5c6b7a;
+    --line:#e3e8ee; --paper:#f4f6f8; --ok:#0a7d4f; --end:#9a3412;
+  }
   * { box-sizing:border-box; }
-  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
-  main { max-width:420px; margin:24px auto; padding:0 16px; }
-  h1 { font-size:18px; margin:0 0 4px; }
-  p.hint { color:var(--muted); font-size:13px; margin:0 0 16px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:12px; }
-  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 4px; }
-  input, select { width:100%; padding:10px; border:1px solid var(--line); border-radius:8px; font-size:15px; }
-  .screen { background:#10151f; color:#e6f4ea; font-family:ui-monospace,Menlo,monospace; font-size:14px;
-            white-space:pre-wrap; min-height:180px; padding:14px; border-radius:10px; }
-  .row { display:flex; gap:8px; margin-top:10px; }
-  button { flex:1; padding:11px; border:0; border-radius:8px; font-size:15px; cursor:pointer; background:var(--accent); color:#fff; }
-  button.secondary { background:#e5e7eb; color:var(--ink); }
-  .meta { font-size:12px; color:var(--muted); margin-top:8px; word-break:break-all; }
+  body {
+    margin:0; min-height:100vh; color:var(--ink);
+    font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background:
+      radial-gradient(900px 420px at 10% -10%, rgba(93,197,233,.35), transparent 60%),
+      radial-gradient(700px 380px at 110% 0%, rgba(234,78,53,.18), transparent 55%),
+      var(--paper);
+  }
+  main { max-width:920px; margin:0 auto; padding:28px 20px 48px; display:grid; grid-template-columns:1fr 340px; gap:28px; align-items:start; }
+  h1 { font-family:Montserrat, Inter, sans-serif; font-size:22px; margin:0 0 6px; color:var(--navy); letter-spacing:-.02em; }
+  .lede { margin:0 0 18px; color:var(--muted); font-size:14px; line-height:1.45; }
+  .lede code { font-size:12px; background:#fff; border:1px solid var(--line); border-radius:4px; padding:1px 5px; }
+  .panel { background:#fff; border:1px solid var(--line); border-radius:16px; padding:16px 16px 14px; box-shadow:0 10px 30px rgba(0,32,95,.06); }
+  label { display:block; font-size:12px; font-weight:600; color:var(--muted); margin:10px 0 4px; }
+  label:first-child { margin-top:0; }
+  input, select {
+    width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:10px;
+    font-size:15px; color:var(--ink); background:#fff;
+  }
+  input:focus, select:focus { outline:2px solid rgba(93,197,233,.7); border-color:var(--sky); }
+  .dial {
+    margin-top:14px; width:100%; padding:12px; border:0; border-radius:10px; cursor:pointer;
+    background:var(--navy); color:#fff; font-size:15px; font-weight:650;
+  }
+  .dial:hover { filter:brightness(1.08); }
+  .notes { margin:14px 0 0; padding:0; list-style:none; font-size:12px; color:var(--muted); line-height:1.5; }
+  .notes li { margin:0 0 6px; }
+  .phone {
+    width:340px; background:#121820; border-radius:36px; padding:14px 14px 18px;
+    box-shadow:0 24px 50px rgba(0,32,95,.28); color:#e8eef4;
+  }
+  .ear { width:92px; height:6px; border-radius:99px; background:#2a3340; margin:4px auto 12px; }
+  .top { display:flex; justify-content:space-between; align-items:center; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#8ea0b5; padding:0 8px 8px; }
+  .pill { border-radius:99px; padding:3px 8px; font-weight:700; letter-spacing:.04em; }
+  .pill.wait { background:#243044; color:#8ea0b5; }
+  .pill.go { background:#123828; color:#8ee0b4; }
+  .pill.stop { background:#3a2218; color:#f0b089; }
+  .screen {
+    background:#070b10; color:#d7ffe4; font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size:14px; line-height:1.45; white-space:pre-wrap; min-height:210px; padding:14px;
+    border-radius:14px; border:1px solid #1c2633;
+  }
+  .reply { margin-top:10px; background:#0c121a; color:#fff; border:1px solid #243044; }
+  .reply:disabled { opacity:.45; }
+  .actions { display:flex; gap:8px; margin-top:8px; }
+  button.send, button.cancel {
+    flex:1; padding:11px; border:0; border-radius:10px; font-size:14px; font-weight:650; cursor:pointer;
+  }
+  button.send { background:var(--ok); color:#fff; }
+  button.cancel { background:#243044; color:#d5deea; }
+  button:disabled { cursor:not-allowed; opacity:.45; }
+  .keys { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:12px; }
+  .keys button {
+    padding:12px 0; border:0; border-radius:12px; background:#1c2633; color:#fff;
+    font-size:18px; font-weight:650; cursor:pointer;
+  }
+  .keys button:hover { background:#273449; }
+  .keys button:disabled { opacity:.35; cursor:not-allowed; }
+  .meta { margin-top:10px; font-size:11px; color:#8ea0b5; word-break:break-all; min-height:2.4em; }
+  @media (max-width:780px) {
+    main { grid-template-columns:1fr; }
+    .phone { width:100%; max-width:340px; }
+  }
 </style>
 </head>
 <body>
 <main>
-  <h1>Inkomoko USSD simulator</h1>
-  <p class="hint">Sends the same JSON as the FDI gateway to <code>/api/ussd</code> (full dial string in <code>userInput</code>, e.g. <code>*662*105*1*1#</code>). Mock test numbers: 250788000001, 250788000002, 250722000003.</p>
-
-  <div class="card">
-    <label for="msisdn">Phone (MSISDN)</label>
-    <input id="msisdn" value="250788000001">
-    <label for="network">Network</label>
-    <select id="network"><option value="MTN">MTN</option><option value="AIRTEL">Airtel</option></select>
-    <label for="code">Service code</label>
-    <input id="code" value="662*105">
-    <div class="row"><button id="dial">Dial</button></div>
-  </div>
-
-  <div class="card">
-    <div id="screen" class="screen">Press "Dial" to start.</div>
-    <div class="row">
-      <input id="reply" placeholder="Your reply" inputmode="numeric" autocomplete="off">
+  <section>
+    <h1>Inkomoko USSD simulator</h1>
+    <p class="lede">Same session rules as the sample gateway: <strong>Dial</strong> opens a new session, each <strong>Send</strong> continues it with the latest reply, and a closed session cannot be resumed. The request is the FDI JSON body for <code>/api/ussd</code>.</p>
+    <div class="panel">
+      <label for="msisdn">Phone (MSISDN)</label>
+      <input id="msisdn" value="250788000001" inputmode="numeric" autocomplete="off">
+      <label for="network">Network</label>
+      <select id="network">
+        <option value="MTN">MTN</option>
+        <option value="AIRTEL">Airtel</option>
+      </select>
+      <label for="code">Service code</label>
+      <input id="code" value="662*105" autocomplete="off">
+      <button class="dial" id="dial" type="button">Dial</button>
+      <ul class="notes">
+        <li>Mock numbers: 250788000001 (one active loan), 250788000002 (several loans), 250722000003 (Airtel).</li>
+        <li>Replies are 0–9, * and #. On the main menu, <code>0</code> exits. Inside a service, <code>00</code> goes back.</li>
+      </ul>
     </div>
-    <div class="row">
-      <button id="send">Send</button>
-      <button id="cancel" class="secondary">Cancel</button>
+  </section>
+
+  <div class="phone">
+    <div class="ear"></div>
+    <div class="top">
+      <span id="codeLabel">*662*105#</span>
+      <span id="state" class="pill wait">Idle</span>
     </div>
+    <div id="screen" class="screen">Press Dial to start a session.</div>
+    <input id="reply" class="reply" placeholder="Reply" inputmode="numeric" autocomplete="off" disabled>
+    <div class="actions">
+      <button class="send" id="send" type="button" disabled>Send</button>
+      <button class="cancel" id="cancel" type="button" disabled>End</button>
+    </div>
+    <div class="keys" id="keys"></div>
     <div id="meta" class="meta"></div>
   </div>
 </main>
 <script>
+  // Session lifecycle matches docs/sample-ussd UssdController:
+  //   Dial  = newRequest 1 (fresh sessionId; a previous session cannot be reused)
+  //   Send  = newRequest 0 (latest reply only, while that session is still open)
+  //   End   = Freeflow FB / continueSession 0 — further replies are rejected
+  // The wire format stays the FDI JSON contract this service actually accepts:
+  // userInput is the full dial string, and the last segment is the latest reply.
   let session = null;
   const $ = (id) => document.getElementById(id);
 
+  const keys = ["1","2","3","4","5","6","7","8","9","*","0","#"];
+  const pad = $("keys");
+  keys.forEach((k) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = k;
+    b.disabled = true;
+    b.onclick = () => { if (session) { $("reply").value += k; $("reply").focus(); } };
+    pad.appendChild(b);
+  });
 
-  async function post() {
-    // Same shape as the FDI gateway: serviceCode "RW|MTN|662|105", userInput "*662*105*1*1#"
+  function setState(kind, label) {
+    const el = $("state");
+    el.className = "pill " + kind;
+    el.textContent = label;
+  }
+
+  function setLive(live) {
+    $("reply").disabled = !live;
+    $("send").disabled = !live;
+    $("cancel").disabled = !live;
+    pad.querySelectorAll("button").forEach((b) => { b.disabled = !live; });
+    if (live) $("reply").focus();
+  }
+
+  function serviceCode() {
+    return $("code").value.trim().replace(/^\*+|#$/g, "");
+  }
+
+  async function post(isNew) {
     const code = session.code;
     const body = {
-      sessionId: session.id, gwRef: session.gwRef, gwTstamp: '',
-      networkCode: 'RW|' + session.network,
-      serviceCode: 'RW|' + session.network + '|' + code.split('*').join('|'),
-      userInput: '*' + [code].concat(session.inputs).join('*') + '#',
-      serviceId: 'simulator', msisdn: $('msisdn').value.trim(), tenantId: 'simulator'
+      sessionId: session.id,
+      gwRef: session.gwRef,
+      gwTstamp: "",
+      networkCode: "RW|" + session.network,
+      serviceCode: "RW|" + session.network + "|" + code.split("*").join("|"),
+      userInput: "*" + [code].concat(session.inputs).join("*") + "#",
+      serviceId: "simulator",
+      msisdn: $("msisdn").value.trim(),
+      tenantId: "simulator",
+      newRequest: isNew ? 1 : 0
     };
-    $('screen').textContent = '...';
+    $("screen").textContent = "...";
     try {
-      const res = await fetch('/api/ussd', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const res = await fetch("/api/ussd", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
       const data = await res.json();
-      $('screen').textContent = data.text || JSON.stringify(data);
-      $('meta').textContent = 'sessionId ' + session.id + ' · appRef ' + (data.appRef || '-') + ' · ' + (data.continueSession === 1 ? 'continue' : 'END');
-      if (data.continueSession !== 1) session = null;
+      const open = res.ok && data.continueSession === 1;
+      $("screen").textContent = data.text || (data.message || JSON.stringify(data));
+      $("meta").textContent = "session " + session.id + "\nappRef " + (data.appRef || "-") + " · " + (open ? "FC continue" : "FB end");
+      if (!open) {
+        session = null;
+        setLive(false);
+        setState("stop", "Ended");
+      } else {
+        setLive(true);
+        setState("go", "In session");
+      }
     } catch (e) {
-      $('screen').textContent = 'Request failed: ' + e.message;
+      $("screen").textContent = "Request failed: " + e.message;
+      setState("stop", "Error");
     }
   }
 
-  $('dial').onclick = () => {
-    const code = $('code').value.trim().replace(/^\*+|#$/g, '');
-    const id = String(Date.now()) + String(Math.floor(Math.random() * 1e6));
-    session = { id, gwRef: id + '|' + $('msisdn').value.trim() + '|sim', inputs: [], code, network: $('network').value };
-    post();
+  $("dial").onclick = () => {
+    const code = serviceCode();
+    if (!code || !/^[0-9]+(\*[0-9]+)*$/.test(code)) {
+      $("screen").textContent = "Service code must look like 662*105.";
+      return;
+    }
+    const msisdn = $("msisdn").value.trim();
+    if (!/^\+?[0-9]{9,15}$/.test(msisdn)) {
+      $("screen").textContent = "Enter a phone number of 9 to 15 digits.";
+      return;
+    }
+    const id = String(Date.now()) + String(Math.floor(Math.random() * 1e6)).padStart(6, "0");
+    session = {
+      id: id.slice(0, 64),
+      gwRef: (id + "|" + msisdn + "|sim").slice(0, 80),
+      inputs: [],
+      code: code,
+      network: $("network").value
+    };
+    $("reply").value = "";
+    $("codeLabel").textContent = "*" + code + "#";
+    setState("go", "Dialling");
+    post(true);
   };
-  $('send').onclick = () => {
-    if (!session) { $('screen').textContent = 'Session ended. Dial again.'; return; }
-    const v = $('reply').value.trim(); if (!v) return;
-    session.inputs.push(v); $('reply').value = ''; post();
+
+  $("send").onclick = () => {
+    if (!session) {
+      $("screen").textContent = "This session is no longer active. Dial to start again.";
+      setLive(false);
+      setState("stop", "Ended");
+      return;
+    }
+    const v = $("reply").value.trim();
+    if (!v) return;
+    if (!/^[0-9*#]{1,182}$/.test(v)) {
+      $("screen").textContent = "Reply can only contain 0-9, * and #.";
+      return;
+    }
+    session.inputs.push(v);
+    $("reply").value = "";
+    post(false);
   };
-  $('reply').addEventListener('keydown', e => { if (e.key === 'Enter') $('send').click(); });
-  $('cancel').onclick = () => { session = null; $('screen').textContent = 'Cancelled.'; $('meta').textContent = ''; };
+
+  $("reply").addEventListener("keydown", (e) => { if (e.key === "Enter") $("send").click(); });
+  $("cancel").onclick = () => {
+    session = null;
+    $("reply").value = "";
+    $("screen").textContent = "Session ended. Dial to start again.";
+    $("meta").textContent = "";
+    setLive(false);
+    setState("stop", "Ended");
+  };
+  $("code").addEventListener("input", () => {
+    const code = serviceCode();
+    $("codeLabel").textContent = code ? "*" + code + "#" : "*#";
+  });
 </script>
 </body>
 </html>

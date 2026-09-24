@@ -35,7 +35,9 @@ public class ReconciliationService {
     public ReconciliationAction propose(String reference, ReconciliationProposalRequest req, String maker) {
         RepaymentTransaction t = txRepo.findByReference(reference)
                 .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + reference));
-        if (!RECONCILABLE.contains(t.getStatus())) {
+        boolean reversePosted = t.getStatus() == ETransactionStatus.POSTED
+                && req.getAction() == EReconciliationAction.MARK_REVERSED;
+        if (!reversePosted && !RECONCILABLE.contains(t.getStatus())) {
             throw new IllegalStateException("Transaction is " + t.getStatus() + " and cannot be reconciled");
         }
         if (actionRepo.existsByTransactionReferenceAndStatus(reference, EApprovalStatus.PENDING_APPROVAL)) {
@@ -92,11 +94,10 @@ public class ReconciliationService {
                 result = "Marked as failed";
             }
             case MARK_REVERSED -> {
-                t.setStatus(ETransactionStatus.REVERSED);
-                t.setFailureReason("Reversed by reconciliation: " + a.getMakerComment());
-                t.setUpdatedAt(DateUtility.nowKigali());
-                txRepo.save(t);
-                result = "Marked as reversed";
+                RepaymentTransaction reversed = repaymentService.reversePosted(t.getReference(), checker);
+                result = reversed.getStatus() == ETransactionStatus.REVERSED
+                        ? "Loan reversed and client refunded"
+                        : reversed.getFailureReason();
             }
             default -> throw new IllegalStateException("Unsupported action");
         }

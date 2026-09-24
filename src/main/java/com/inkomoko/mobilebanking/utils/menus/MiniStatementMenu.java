@@ -1,6 +1,5 @@
 package com.inkomoko.mobilebanking.utils.menus;
 
-import com.inkomoko.mobilebanking.enums.ELanguage;
 import com.inkomoko.mobilebanking.enums.ELoanStatus;
 import com.inkomoko.mobilebanking.enums.ESessionEndReason;
 import com.inkomoko.mobilebanking.models.UssdSession;
@@ -17,6 +16,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -41,12 +41,13 @@ public class MiniStatementMenu {
             ELoanStatus.SETTLED, ELoanStatus.CLOSED);
 
     private final CommonMenus common;
+    private final CommonHeadings headings;
     private final FineractService fineract;
     private final SmsService sms;
     private final AuditService audit;
 
     public String processMenu(UssdSession s, String input) {
-        ELanguage l = s.getLanguage();
+        String l = s.getLanguage();
         try {
             if (s.getStep() == null) {
                 List<LoanSummaryDto> loans = fineract.getClientLoans(s.getClientId()).stream()
@@ -55,11 +56,11 @@ public class MiniStatementMenu {
                         .toList();
                 if (loans.isEmpty()) {
                     s.setStep(STEP_DISPLAY);
-                    return CommonHeadings.noLoans(l) + CommonHeadings.back(l);
+                    return headings.noLoans(l) + headings.back(l);
                 }
                 if (loans.size() == 1) return statement(s, loans.get(0));
                 s.setStep(STEP_SELECT);
-                return common.loanSelectionScreen(s, loans, x -> x.accountNo() + " " + x.status().label(l));
+                return common.loanSelectionScreen(s, loans, common::loanListLabel);
             }
             if ("0".equals(input)) return common.backToMain(s);
 
@@ -67,13 +68,13 @@ public class MiniStatementMenu {
                 Long loanId = common.resolveLoanChoice(s, input);
                 if (loanId == null) {
                     s.setStep(null);
-                    return CommonHeadings.invalidChoice(l) + processMenu(s, null);
+                    return headings.invalidChoice(l) + processMenu(s, null);
                 }
                 return statement(s, fineract.getLoanDetails(loanId));
             }
 
             if ("1".equals(input) && s.getLoanId() != null) return sendFullStatement(s);
-            return common.invalidThen(s, smsOption(l) + CommonHeadings.back(l));
+            return common.invalidThen(s, smsOption(l) + headings.back(l));
         } catch (Exception e) {
             log.error("Mini statement failed msisdn={} error={}", s.getMsisdn(), e.getMessage());
             return common.unavailable(s);
@@ -81,7 +82,7 @@ public class MiniStatementMenu {
     }
 
     private String statement(UssdSession s, LoanSummaryDto loan) {
-        ELanguage l = s.getLanguage();
+        String l = s.getLanguage();
         if (loan.clientId() != null && !loan.clientId().equals(s.getClientId())) return common.unavailable(s);
         s.setLoanId(loan.loanId());
         s.setLoanAccountNo(loan.accountNo());
@@ -91,42 +92,40 @@ public class MiniStatementMenu {
 
         List<RepaymentDto> rows = fineract.getRepayments(loan.loanId(), ON_SCREEN);
         if (rows.isEmpty()) {
-            return l.pick("Nta bwishyu buraboneka kuri " + loan.accountNo() + ".",
-                    "No repayments yet on " + loan.accountNo() + ".",
-                    "Aucun remboursement sur " + loan.accountNo() + ".") + CommonHeadings.back(l);
+            return headings.text(l, "statement.none", Map.of("account", loan.accountNo()))
+                    + headings.back(l);
         }
-        StringBuilder sb = new StringBuilder(l.pick("Ubwishyu ", "Repayments ", "Paiements "))
-                .append(loan.accountNo()).append(':');
+        StringBuilder sb = new StringBuilder(headings.text(l, "statement.header",
+                Map.of("account", loan.accountNo())));
         for (RepaymentDto r : rows) {
             sb.append('\n').append(DateUtility.shortDate(r.date())).append(' ')
                     .append(GeneralMethods.formatAmount(r.amount())).append(' ')
                     .append(shortRef(r.reference()));
         }
-        return sb.append('\n').append(smsOption(l)).append(CommonHeadings.back(l)).toString();
+        return sb.append('\n').append(smsOption(l)).append(headings.back(l)).toString();
     }
 
     private String sendFullStatement(UssdSession s) {
-        ELanguage l = s.getLanguage();
+        String l = s.getLanguage();
         List<RepaymentDto> rows = fineract.getRepayments(s.getLoanId(), SMS_MAX);
         LoanSummaryDto loan = fineract.getLoanDetails(s.getLoanId());
-        StringBuilder sb = new StringBuilder("Inkomoko ")
-                .append(l.pick("raporo y'ideni ", "statement loan ", "releve pret "))
-                .append(s.getLoanAccountNo()).append(":\n");
+        StringBuilder sb = new StringBuilder(headings.text(l, "sms.statement.header",
+                Map.of("account", s.getLoanAccountNo()))).append('\n');
         for (RepaymentDto r : rows) {
             sb.append(DateUtility.shortDate(r.date())).append(' ').append(GeneralMethods.rwf(r.amount()))
                     .append(" Ref ").append(r.reference()).append('\n');
         }
-        sb.append(l.pick("Asigaye: ", "Balance: ", "Solde: ")).append(GeneralMethods.rwf(loan.totalOutstanding()));
+        sb.append(headings.text(l, "sms.statement.balance",
+                Map.of("balance", GeneralMethods.rwf(loan.totalOutstanding()))));
         sms.send(s.getMsisdn(), sb.toString());
         audit.ussd(s.getMsisdn(), s.getSessionId(), "STATEMENT_SMS", String.valueOf(s.getLoanId()), true,
                 rows.size() + " rows");
         s.end(ESessionEndReason.COMPLETED);
-        return l.pick("Raporo yuzuye yoherejwe kuri SMS. ", "Full statement sent by SMS. ",
-                "Releve complet envoye par SMS. ") + CommonHeadings.thankYou(l);
+        return headings.text(l, "statement.sms_sent") + " " + headings.thankYou(l);
     }
 
-    private static String smsOption(ELanguage l) {
-        return l.pick("1. SMS raporo yose", "1. Full stmt by SMS", "1. Releve par SMS");
+    private String smsOption(String l) {
+        return headings.text(l, "statement.sms_option");
     }
 
     private static String shortRef(String ref) {

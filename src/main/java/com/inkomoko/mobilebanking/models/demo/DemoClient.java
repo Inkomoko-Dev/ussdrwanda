@@ -23,6 +23,7 @@ public class DemoClient {
     private String msisdn;
 
     private String displayName;
+    private String email;
     private boolean active;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

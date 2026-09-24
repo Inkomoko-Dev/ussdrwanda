@@ -3,6 +3,7 @@ package com.inkomoko.mobilebanking.services.integration;
 import com.inkomoko.mobilebanking.config.InkomokoProperties;
 import com.inkomoko.mobilebanking.models.RepaymentTransaction;
 import com.inkomoko.mobilebanking.models.dto.PaymentInitResult;
+import com.inkomoko.mobilebanking.models.dto.PaymentReversalResult;
 import com.inkomoko.mobilebanking.models.dto.PaymentStatusResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -26,6 +27,7 @@ import java.util.Map;
  * Efashe Payment Gateway merchant API specification:
  *   POST {base}/collections              — request a MoMo debit push
  *   GET  {base}/collections/{reference}  — query status
+ *   POST {base}/collections/{reference}/reversals — refund a collected payment
  */
 @Slf4j
 @Service
@@ -91,6 +93,24 @@ public class EfashePaymentGatewayService implements PaymentGatewayService {
         } catch (RestClientException e) {
             log.warn("Payment status query failed ref={} error={}", tx.getReference(), e.getMessage());
             return new PaymentStatusResult("UNKNOWN", null, null, null, e.getMessage());
+        }
+    }
+
+    @Override
+    public PaymentReversalResult requestReversal(RepaymentTransaction tx) {
+        try {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("reference", tx.getReference());
+            body.put("amount", tx.getAmount());
+            body.put("reason", "Repayment reversed");
+            Map<String, Object> res = client.post().uri("/collections/{ref}/reversals", tx.getReference())
+                    .contentType(MediaType.APPLICATION_JSON).body(body).retrieve().body(MAP);
+            String status = str(res, "status");
+            boolean ok = status == null || "SUCCESS".equalsIgnoreCase(status) || "ACCEPTED".equalsIgnoreCase(status);
+            return new PaymentReversalResult(ok, str(res, "message"));
+        } catch (RestClientException e) {
+            log.error("Payment reversal failed ref={} error={}", tx.getReference(), e.getMessage());
+            return new PaymentReversalResult(false, e.getMessage());
         }
     }
 
