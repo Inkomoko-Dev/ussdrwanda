@@ -11,6 +11,7 @@ import com.inkomoko.mobilebanking.models.dto.UssdResponse;
 import com.inkomoko.mobilebanking.repositories.ConsentLogRepository;
 import com.inkomoko.mobilebanking.repositories.UssdSessionRepository;
 import com.inkomoko.mobilebanking.services.AuditService;
+import com.inkomoko.mobilebanking.services.ConsentService;
 import com.inkomoko.mobilebanking.services.LanguagePreferenceService;
 import com.inkomoko.mobilebanking.services.PinService;
 import com.inkomoko.mobilebanking.services.integration.FineractService;
@@ -44,8 +45,9 @@ import java.util.regex.Pattern;
  *   out: sessionId, gwRef, appRef, appTstamp, text, continueSession (1 = continue, 0 = end)
  *
  * Flow (proposal §3.3):
- *   First dial: language, then Terms & Conditions, then client lookup, then PIN setup.
- *   A later dial skips language and terms once they are saved, and asks for the PIN.
+ *   A number that is not registered is told it cannot use the service.
+ *   A registered customer with no saved language always starts at language selection,
+ *   then terms, then PIN setup. A later dial skips only the steps already completed.
  *   After login: main menu, then balance, status, statement, repay, help, or settings.
  */
 @RestController
@@ -70,6 +72,7 @@ public class UssdController {
     // ── Repositories / services ────────────────────────────────────────────
     private final UssdSessionRepository sessionRepo;
     private final ConsentLogRepository consentRepo;
+    private final ConsentService consentService;
     private final LanguagePreferenceService languagePreferenceService;
     private final PinService pinService;
     private final FineractService fineract;
@@ -202,8 +205,8 @@ public class UssdController {
         s.setAppRef(Utility.generateAppRef());
         s.setNetworkCode(req.getNetworkCode());
         s.setLevel(0);
-        s.setLanguage(languagePreferenceService.preferredLanguage(msisdn));
-        // Ignore shortcut digits dialled with the code (e.g. *662*105*1#): every session starts at consent.
+        s.setLanguage(languagePreferenceService.chosenLanguage(msisdn).orElse(null));
+        // Ignore shortcut digits dialled with the code (e.g. *662*105*1#).
         s.setProcessedInputs(initialSegments);
         s.setCreatedAt(now);
         s.setUpdatedAt(now);
@@ -256,7 +259,7 @@ public class UssdController {
         if (chosen == null) return headings.invalidLanguage(languages);
         s.setLanguage(chosen);
         languagePreferenceService.savePreferredLanguage(s.getMsisdn(), chosen);
-        if (hasCurrentConsent(s.getMsisdn())) {
+        if (consentService.hasCurrentConsent(s.getMsisdn())) {
             s.setConsentAccepted(true);
             return identifyClient(s);
         }
@@ -265,38 +268,71 @@ public class UssdController {
     }
 
     /**
-     * First screen of a dial. Language and terms are asked only when this phone has not
-     * completed them. A saved PIN goes straight to the PIN prompt.
+     * First screen of a dial. Someone who is not registered never sees language or terms.
+     * A registered customer who has not chosen a language always starts there — a country
+     * default is not treated as their choice. Terms come only after that choice.
      */
     private String beginSession(UssdSession s) {
-        List<String> languages = countries.languages();
-        var chosen = languagePreferenceService.chosenLanguage(s.getMsisdn());
-        if (chosen.isEmpty() && languages.size() != 1) {
+        String noticeLang = s.getLanguage() != null ? s.getLanguage() : languagePreferenceService.defaultLanguage();
+        String blocked = eligibilityGate(s, noticeLang);
+        if (blocked != null) return blocked;
+
+        if (s.getLanguage() == null) {
             s.setLevel(LEVEL_LANGUAGE);
-            return headings.languageMenu(languages);
+            return headings.languageMenu(countries.languages());
         }
-        String lang = chosen.orElseGet(() -> languages.isEmpty()
-                ? languagePreferenceService.defaultLanguage() : languages.get(0));
-        s.setLanguage(lang);
-        if (!hasCurrentConsent(s.getMsisdn())) {
+        if (!consentService.hasCurrentConsent(s.getMsisdn())) {
             s.setLevel(LEVEL_CONSENT);
-            return headings.consent(lang);
+            return headings.consent(s.getLanguage());
         }
         s.setConsentAccepted(true);
         return identifyClient(s);
     }
 
-    /** True when this phone accepted the terms wording that is on screen today. */
-    private boolean hasCurrentConsent(String msisdn) {
-        for (ConsentLog log : consentRepo.findByMsisdnAndAcceptedTrue(msisdn)) {
-            String version = log.getNoticeVersion();
-            if (version == null) continue;
-            int dash = version.indexOf('-');
-            if (dash <= 0) continue;
-            String lang = version.substring(0, dash);
-            if (version.equals(headings.consentVersion(lang))) return true;
+    /**
+     * @return a terminal screen when this phone cannot use the service, or null when it can
+     *         (onboarded, active, and either ready for a PIN or still to create one)
+     */
+    private String eligibilityGate(UssdSession s, String lang) {
+        Optional<ClientDto> client;
+        try {
+            client = fineract.findClientByMsisdn(s.getMsisdn());
+        } catch (Exception e) {
+            log.error("Client lookup failed msisdn={} error={}", s.getMsisdn(), e.getMessage());
+            s.setLanguage(lang);
+            return common.unavailable(s);
         }
-        return false;
+        String helpline = common.helpline();
+        if (client.isEmpty()) {
+            s.setClientState(EClientState.NOT_REGISTERED);
+            audit.ussd(s.getMsisdn(), s.getSessionId(), "CLIENT_NOT_FOUND", null, false, null);
+            return common.endWith(s, ESessionEndReason.NOT_REGISTERED, headings.notRegistered(lang, helpline));
+        }
+        ClientDto c = client.get();
+        s.setClientId(c.clientId());
+        s.setClientName(c.displayName());
+        if (!c.active()) {
+            s.setClientState(EClientState.INACTIVE);
+            audit.ussd(s.getMsisdn(), s.getSessionId(), "CLIENT_INACTIVE", String.valueOf(c.clientId()), false, null);
+            return common.endWith(s, ESessionEndReason.NOT_REGISTERED, headings.inactiveClient(lang, helpline));
+        }
+        EClientState state = pinService.resolveState(s.getMsisdn(), c.clientId(), s.getSessionId());
+        s.setClientState(state);
+        return switch (state) {
+            case LOCKED -> {
+                audit.ussd(s.getMsisdn(), s.getSessionId(), "LOGIN_BLOCKED_LOCKED", String.valueOf(c.clientId()), false, null);
+                yield common.endWith(s, ESessionEndReason.ACCOUNT_LOCKED, headings.pinLocked(lang, helpline));
+            }
+            case NOT_ONBOARDED -> {
+                audit.ussd(s.getMsisdn(), s.getSessionId(), "CLIENT_NOT_ONBOARDED", String.valueOf(c.clientId()), false, null);
+                yield common.endWith(s, ESessionEndReason.NOT_REGISTERED, headings.notOnboarded(lang, helpline));
+            }
+            case DISABLED -> {
+                audit.ussd(s.getMsisdn(), s.getSessionId(), "CLIENT_DISABLED", String.valueOf(c.clientId()), false, null);
+                yield common.endWith(s, ESessionEndReason.ACCOUNT_LOCKED, headings.accessDisabled(lang, helpline));
+            }
+            default -> null;
+        };
     }
 
     // ── Level 2: Terms & Conditions / consent in the chosen language (ToR 3.1(ix)) ──

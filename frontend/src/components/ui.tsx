@@ -112,12 +112,14 @@ export function Modal({ title, onClose, children, footer, wide }: {
 }
 
 const STATUS_KIND: Record<string, string> = {
-  ACTIVE: 'ok', POSTED: 'ok', APPROVED: 'ok', SETTLED: 'ok',
+  ACTIVE: 'ok', POSTED: 'ok', APPROVED: 'ok', SETTLED: 'ok', ACCEPTED: 'ok',
   NOT_SET: 'info', PENDING: 'info', INITIATED: 'info', PAID: 'info', PENDING_APPROVAL: 'warn', UNDER_REVIEW: 'info',
   LOCKED: 'bad', DISABLED: 'bad', FAILED: 'bad', POSTING_FAILED: 'warn', NEEDS_REVIEW: 'warn', IN_ARREARS: 'warn',
   REVERSED: 'neutral', REJECTED: 'neutral', CLOSED: 'neutral', WITHDRAWN: 'neutral',
 };
-const STATUS_LABEL: Record<string, string> = { NOT_SET: 'PIN not set', PENDING_APPROVAL: 'Pending approval' };
+const STATUS_LABEL: Record<string, string> = {
+  NOT_SET: 'PIN not set', PENDING_APPROVAL: 'Pending approval', ACCEPTED: 'Accepted', NOT_ACCEPTED: 'Not yet',
+};
 
 export function StatusBadge({ status }: { status: string }) {
   const label = STATUS_LABEL[status] ?? status.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase());

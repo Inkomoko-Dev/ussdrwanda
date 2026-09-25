@@ -55,15 +55,16 @@ export default function Customers() {
           </div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Phone</th><th>Name</th><th>Status</th><th>Language</th><th>Registered via</th><th>Last login</th><th></th></tr></thead>
+              <thead><tr><th>Phone</th><th>Name</th><th>Status</th><th>Language</th><th>Terms</th><th>Registered via</th><th>Last login</th><th></th></tr></thead>
               <tbody>
-                {data?.content.length === 0 && <tr><td colSpan={7} className="empty">No customers found.</td></tr>}
+                {data?.content.length === 0 && <tr><td colSpan={8} className="empty">No customers found.</td></tr>}
                 {data?.content.map((c) => (
                   <tr key={c.msisdn}>
                     <td className="mono">{c.msisdn}</td>
                     <td>{c.clientName ?? '—'}</td>
                     <td><StatusBadge status={c.status} /></td>
                     <td>{languageLabel(c.language)}</td>
+                    <td><StatusBadge status={c.termsAccepted ? 'ACCEPTED' : 'NOT_ACCEPTED'} /></td>
                     <td>{c.registrationChannel === 'PORTAL' ? `Portal · ${c.onboardedBy ?? ''}` : c.registrationChannel === 'SELF' ? 'Self (first dial)' : '—'}</td>
                     <td>{fmtDate(c.lastLoginAt)}</td>
                     <td>
@@ -165,6 +166,7 @@ function DetailsModal({ customer, canEdit, onClose, onDone }: {
           {details?.coreEmail ? `, ${details.coreEmail}` : ''}. Sync to copy those onto this customer.
         </Alert>
       )}
+      <Field label="Terms & conditions"><span>{customer.termsAccepted ? 'Accepted' : 'Not yet'}</span></Field>
       <Field label="Name"><input value={name} disabled={!canEdit} onChange={(e) => setName(e.target.value)} /></Field>
       <Field label="Phone" help="Used to sign in on USSD"><input value={phone} disabled={!canEdit} onChange={(e) => setPhone(e.target.value)} /></Field>
       <Field label="Email" help="Example: grace@inkomoko.org"><input type="email" value={email} disabled={!canEdit} placeholder="grace@inkomoko.org" onChange={(e) => setEmail(e.target.value)} /></Field>

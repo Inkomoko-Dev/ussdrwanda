@@ -9,6 +9,7 @@ import com.inkomoko.mobilebanking.models.dto.LoanSummaryDto;
 import com.inkomoko.mobilebanking.repositories.AccountAttemptRepository;
 import com.inkomoko.mobilebanking.repositories.ClientPinRepository;
 import com.inkomoko.mobilebanking.services.AuditService;
+import com.inkomoko.mobilebanking.services.ConsentService;
 import com.inkomoko.mobilebanking.services.CountryService;
 import com.inkomoko.mobilebanking.services.LanguagePreferenceService;
 import com.inkomoko.mobilebanking.services.PinService;
@@ -26,6 +27,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * USSD customers as seen in the portal: search, core-banking lookup, onboarding
@@ -41,6 +43,7 @@ public class CustomerService {
     private final PinService pinService;
     private final SmsService sms;
     private final LanguagePreferenceService languages;
+    private final ConsentService consent;
     private final AuditService audit;
     private final CountryService countries;
     private final InkomokoProperties props;
@@ -51,8 +54,10 @@ public class CustomerService {
         if (query.matches("\\+?[0-9]{9,13}")) query = PhoneUtils.purify(query);
         PageRequest pr = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 200));
         Page<ClientPin> result = status == null ? pins.search(query, pr) : pins.searchByStatus(query, status, pr);
-        Map<String, String> chosen = languages.chosenLanguages(result.map(ClientPin::getMsisdn).toList());
-        return result.map(p -> view(p, chosen.get(p.getMsisdn())));
+        List<String> phones = result.map(ClientPin::getMsisdn).toList();
+        Map<String, String> chosen = languages.chosenLanguages(phones);
+        Set<String> accepted = consent.withCurrentConsent(phones);
+        return result.map(p -> view(p, chosen.get(p.getMsisdn()), accepted.contains(p.getMsisdn())));
     }
 
     public CustomerLookup lookup(String msisdn) {
@@ -61,7 +66,7 @@ public class CustomerService {
         List<LoanSummaryDto> loans = client.map(c -> coreBanking.getClientLoans(c.clientId())).orElse(List.of());
         return new CustomerLookup(phone, client.isPresent(),
                 client.map(c -> new ClientInfo(c.clientId(), c.displayName(), c.active())).orElse(null),
-                loans, pins.findByMsisdn(phone).map(p -> view(p, languages.chosenLanguage(phone).orElse(null))).orElse(null));
+                loans, pins.findByMsisdn(phone).map(this::view).orElse(null));
     }
 
     /** Registers a verified core-banking client for USSD; the client creates a PIN on first dial. */
@@ -225,12 +230,12 @@ public class CustomerService {
     }
 
     private CustomerView view(ClientPin p) {
-        return view(p, languages.chosenLanguage(p.getMsisdn()).orElse(null));
+        return view(p, languages.chosenLanguage(p.getMsisdn()).orElse(null), consent.hasCurrentConsent(p.getMsisdn()));
     }
 
-    private CustomerView view(ClientPin p, String language) {
+    private CustomerView view(ClientPin p, String language, boolean termsAccepted) {
         return new CustomerView(p.getMsisdn(), p.getClientId(), p.getClientName(), p.getStatus(),
                 p.getRegistrationChannel(), p.getOnboardedBy(), p.getOnboardedAt(), p.getLastLoginAt(),
-                p.getLockedAt(), p.getCreatedAt(), language, p.getEmail());
+                p.getLockedAt(), p.getCreatedAt(), language, p.getEmail(), termsAccepted);
     }
 }

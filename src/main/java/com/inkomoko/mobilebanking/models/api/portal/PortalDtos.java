@@ -115,7 +115,7 @@ public final class PortalDtos {
     public record CustomerView(String msisdn, Long clientId, String clientName, EPinStatus status,
                                String registrationChannel, String onboardedBy, LocalDateTime onboardedAt,
                                LocalDateTime lastLoginAt, LocalDateTime lockedAt, LocalDateTime createdAt,
-                               String language, String email) {
+                               String language, String email, boolean termsAccepted) {
     }
 
     /** Portal customer beside the matching core-banking client, when one exists. */

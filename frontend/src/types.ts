@@ -53,7 +53,7 @@ export type PinStatus = 'NOT_SET' | 'ACTIVE' | 'LOCKED' | 'DISABLED';
 export interface Customer {
   msisdn: string; clientId?: number; clientName?: string; status: PinStatus; registrationChannel?: string;
   onboardedBy?: string; onboardedAt?: string; lastLoginAt?: string; lockedAt?: string; createdAt?: string;
-  language?: Language; email?: string;
+  language?: Language; email?: string; termsAccepted?: boolean;
 }
 export interface Loan {
   loanId: number; clientId?: number; accountNo: string; productName?: string; status: string;
