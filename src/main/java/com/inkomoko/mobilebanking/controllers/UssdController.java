@@ -6,6 +6,7 @@ import com.inkomoko.mobilebanking.enums.ESessionEndReason;
 import com.inkomoko.mobilebanking.models.ConsentLog;
 import com.inkomoko.mobilebanking.models.UssdSession;
 import com.inkomoko.mobilebanking.models.dto.ClientDto;
+import com.inkomoko.mobilebanking.models.dto.LoanSummaryDto;
 import com.inkomoko.mobilebanking.models.dto.UssdRequest;
 import com.inkomoko.mobilebanking.models.dto.UssdResponse;
 import com.inkomoko.mobilebanking.repositories.ConsentLogRepository;
@@ -16,6 +17,7 @@ import com.inkomoko.mobilebanking.services.LanguagePreferenceService;
 import com.inkomoko.mobilebanking.services.PinService;
 import com.inkomoko.mobilebanking.services.integration.FineractService;
 import com.inkomoko.mobilebanking.utils.DateUtility;
+import com.inkomoko.mobilebanking.utils.GeneralMethods;
 import com.inkomoko.mobilebanking.utils.PhoneUtils;
 import com.inkomoko.mobilebanking.utils.UssdInputParser;
 import com.inkomoko.mobilebanking.utils.Utility;
@@ -31,6 +33,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -48,7 +51,7 @@ import java.util.regex.Pattern;
  *   A number that is not registered is told it cannot use the service.
  *   A registered customer with no saved language always starts at language selection,
  *   then terms, then PIN setup. A later dial skips only the steps already completed.
- *   After login: main menu, then balance, status, statement, repay, help, or settings.
+ *   After login: Loan, Repay, Account info, Settings, or FAQs.
  */
 @RestController
 @RequestMapping("/api/ussd")
@@ -81,8 +84,8 @@ public class UssdController {
     private final com.inkomoko.mobilebanking.services.CountryService countries;
 
     // ── Menu handlers ──────────────────────────────────────────────────────
-    private final CheckBalanceMenu balanceMenu;
-    private final LoanStatusMenu loanStatusMenu;
+    private final LoanMenu loanMenu;
+    private final AccountInfoMenu accountInfoMenu;
     private final MiniStatementMenu miniStatementMenu;
     private final RepayLoanMenu repayLoanMenu;
     private final HelpMenu helpMenu;
@@ -443,7 +446,27 @@ public class UssdController {
         }
         pinService.setPin(s.getMsisdn(), s.getClientId(), s.getClientName(), input);
         audit.ussd(s.getMsisdn(), s.getSessionId(), "PIN_SETUP", String.valueOf(s.getClientId()), true, null);
-        return authenticated(s, headings.pinCreated(l));
+        return pinConfirmed(s);
+    }
+
+    /** First PIN is confirmed, the loan is shown, and the session ends. The next dial is a PIN login. */
+    private String pinConfirmed(UssdSession s) {
+        String l = s.getLanguage();
+        try {
+            List<LoanSummaryDto> loans = fineract.getClientLoans(s.getClientId()).stream()
+                    .filter(x -> x.status().isRepayable()).toList();
+            if (!loans.isEmpty()) {
+                LoanSummaryDto loan = fineract.getLoanDetails(loans.get(0).loanId());
+                String account = loan.accountNo() == null ? "-" : loan.accountNo();
+                return common.endWith(s, ESessionEndReason.COMPLETED, headings.text(l, "pin.confirmed", Map.of(
+                        "account", account,
+                        "amount", GeneralMethods.rwf(loan.totalOutstanding()),
+                        "due", DateUtility.screenDate(loan.nextDueDate()))));
+            }
+        } catch (Exception e) {
+            log.warn("PIN confirmed summary failed msisdn={} error={}", s.getMsisdn(), e.getMessage());
+        }
+        return common.endWith(s, ESessionEndReason.COMPLETED, headings.pinCreated(l));
     }
 
     private String pinEntry(UssdSession s, String input) {
@@ -481,12 +504,11 @@ public class UssdController {
         String l = s.getLanguage();
         if (!s.isAuthenticated()) return common.unavailable(s);
         String service = switch (input) {
-            case "1" -> CheckBalanceMenu.SERVICE;
-            case "2" -> LoanStatusMenu.SERVICE;
-            case "3" -> MiniStatementMenu.SERVICE;
-            case "4" -> RepayLoanMenu.SERVICE;
+            case "1" -> LoanMenu.SERVICE;
+            case "2" -> RepayLoanMenu.SERVICE;
+            case "3" -> AccountInfoMenu.SERVICE;
+            case "4" -> SettingsMenu.SERVICE;
             case "5" -> HelpMenu.SERVICE;
-            case "6" -> SettingsMenu.SERVICE;
             case "0" -> "exit";
             default -> null;
         };
@@ -511,8 +533,8 @@ public class UssdController {
 
     private String dispatch(UssdSession s, String input) {
         return switch (s.getService()) {
-            case CheckBalanceMenu.SERVICE -> balanceMenu.processMenu(s, input);
-            case LoanStatusMenu.SERVICE -> loanStatusMenu.processMenu(s, input);
+            case LoanMenu.SERVICE -> loanMenu.processMenu(s, input);
+            case AccountInfoMenu.SERVICE -> accountInfoMenu.processMenu(s, input);
             case MiniStatementMenu.SERVICE -> miniStatementMenu.processMenu(s, input);
             case RepayLoanMenu.SERVICE -> repayLoanMenu.processMenu(s, input);
             case HelpMenu.SERVICE -> helpMenu.processMenu(s, input);

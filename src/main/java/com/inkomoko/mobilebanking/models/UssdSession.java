@@ -72,6 +72,9 @@ public class UssdSession {
 
     @Enumerated(EnumType.STRING)
     private ETelecom telecom;
+    /** Phone that receives the Mobile Money prompt. Null means the caller's own number. */
+    @Column(length = 20)
+    private String payerMsisdn;
 
     // ─── Input tracking / idempotency ──────────────────────────────────────
     /** Number of user-input segments already consumed from the cumulative userInput. */
@@ -106,5 +109,7 @@ public class UssdSession {
         this.loanOptions = null;
         this.amount = null;
         this.outstanding = null;
+        this.payerMsisdn = null;
+        this.telecom = null;
     }
 }

@@ -79,6 +79,14 @@ public class CountryService {
         return active().map(CountryConfig::getCurrency).orElse(props.getRepayment().getCurrency());
     }
 
+    /** Mobile networks offered when a repayment is paid from another phone. Defaults to MTN and Airtel. */
+    public List<String> mobileNetworks() {
+        return active().map(c -> {
+            if (c.getMobileNetworks() == null || c.getMobileNetworks().isBlank()) return List.<String>of();
+            return Arrays.stream(c.getMobileNetworks().split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+        }).filter(list -> !list.isEmpty()).orElse(List.of("MTN", "Airtel"));
+    }
+
     // ── Portal management ───────────────────────────────────────────────
 
     public List<CountryView> list() {

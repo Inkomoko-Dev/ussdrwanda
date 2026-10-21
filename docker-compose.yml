@@ -1,0 +1,27 @@
+# Local kickstart. Builds this repo and runs the app.
+# PostgreSQL stays on the developer machine (no database container).
+# Host network so localhost:5432 is that Postgres on Windows, macOS, and Linux.
+# Copy .env.example to .env first. See README "Run with Docker Compose".
+
+services:
+  inkomoko-ussd:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: inkomoko-ussd
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      SERVER_PORT: "9094"
+      TZ: Africa/Kigali
+      FINERACT_MODE: demo
+      PAYMENT_MODE: mock
+      SMS_MODE: mock
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:9094/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 180s
+    restart: unless-stopped

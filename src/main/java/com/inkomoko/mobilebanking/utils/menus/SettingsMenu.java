@@ -76,12 +76,11 @@ public class SettingsMenu {
 
     private String languageList(UssdSession s) {
         s.setStep(STEP_LANGUAGE);
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder(headings.text(s.getLanguage(), "settings.language"));
         List<String> languages = countries.languages();
         int i = 1;
         for (String code : languages) {
-            if (i > 1) sb.append('\n');
-            sb.append(i++).append(". ").append(languageService.nativeName(code));
+            sb.append('\n').append(i++).append(". ").append(languageService.nativeName(code));
         }
         return sb.append(headings.back(s.getLanguage())).toString();
     }
@@ -112,7 +111,7 @@ public class SettingsMenu {
         return switch (pinService.verify(s.getMsisdn(), input)) {
             case SUCCESS -> {
                 s.setStep(STEP_PIN_NEW);
-                yield headings.pinSetup(l, props.getUssd().getPinLength());
+                yield headings.text(l, "settings.pin_new") + headings.back(l);
             }
             case WRONG -> headings.wrongPin(l, pinService.remainingAttempts(s.getMsisdn()))
                     + headings.text(l, "settings.pin_current") + headings.back(l);
@@ -127,14 +126,14 @@ public class SettingsMenu {
         String l = s.getLanguage();
         int digits = props.getUssd().getPinLength();
         if (!pinService.isValidFormat(input)) {
-            return headings.pinBadFormat(l, digits) + headings.pinSetup(l, digits);
+            return headings.pinBadFormat(l, digits) + headings.text(l, "settings.pin_new") + headings.back(l);
         }
         if (pinService.isWeak(input)) {
-            return headings.pinWeak(l) + headings.pinSetup(l, digits);
+            return headings.pinWeak(l) + headings.text(l, "settings.pin_new") + headings.back(l);
         }
         s.setPendingPinHash(pinService.hash(input));
         s.setStep(STEP_PIN_CONFIRM);
-        return headings.pinConfirm(l);
+        return headings.text(l, "settings.pin_confirm") + headings.back(l);
     }
 
     private String confirmPin(UssdSession s, String input) {
@@ -143,11 +142,10 @@ public class SettingsMenu {
         s.setPendingPinHash(null);
         if (!match) {
             s.setStep(STEP_PIN_NEW);
-            return headings.pinMismatch(l) + headings.pinSetup(l, props.getUssd().getPinLength());
+            return headings.pinMismatch(l) + headings.text(l, "settings.pin_new") + headings.back(l);
         }
         pinService.setPin(s.getMsisdn(), s.getClientId(), s.getClientName(), input);
         audit.ussd(s.getMsisdn(), s.getSessionId(), "PIN_CHANGED", String.valueOf(s.getClientId()), true, null);
-        s.setStep(null);
-        return headings.text(l, "settings.pin_changed") + "\n" + headings.text(l, "settings.menu") + headings.back(l);
+        return common.endWith(s, ESessionEndReason.COMPLETED, headings.text(l, "settings.pin_changed"));
     }
 }

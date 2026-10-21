@@ -39,6 +39,7 @@ public final class MessageRules {
             Map.entry("digits", "6"),
             Map.entry("remaining", "3"),
             Map.entry("name", "Jean-Baptist"),            // first name, 12 chars
+            Map.entry("msisdn", "250788000000"),
             Map.entry("wallet", "Airtel Money 0788***456"),
             Map.entry("ref", "IKR260925143012123456"));
 

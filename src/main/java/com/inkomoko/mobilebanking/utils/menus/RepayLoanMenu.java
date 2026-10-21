@@ -1,6 +1,5 @@
 package com.inkomoko.mobilebanking.utils.menus;
 
-import com.inkomoko.mobilebanking.config.InkomokoProperties;
 import com.inkomoko.mobilebanking.enums.ESessionEndReason;
 import com.inkomoko.mobilebanking.enums.ETelecom;
 import com.inkomoko.mobilebanking.models.UssdSession;
@@ -18,16 +17,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 4. Repay Loan (ToR 3.1(iv), proposal §3.5 / Screens 5–7).
+ * Repay a loan from the caller's number or another Mobile Money number.
  *
- *   entry         → telecom check → 1 repayable loan: amount prompt | several: loan list
- *   SELECT_LOAN   → amount prompt (shows outstanding balance, live from Fineract)
- *   ENTER_AMOUNT  → validate (min RWF 500, ≤ outstanding, ≤ max) → confirm screen
- *   CONFIRM       → 1: push MoMo debit request (client approves with MoMo PIN on the phone prompt)
- *                   2: cancel
- *
- * The session ends after the push: the MNO shows its own PIN prompt, and the result is confirmed
- * by SMS once the gateway callback arrives and the repayment is posted to Fineract.
+ *   entry        → loan list
+ *   SELECT_LOAN  → pay the balance, or enter another amount
+ *   OFFER        → 1 balance, 2 other amount
+ *   ENTER_AMOUNT → amount
+ *   PAYER        → this number, or another number
+ *   NETWORK      → MTN / Airtel (country networks)
+ *   PHONE        → the other number, then the push is sent
  */
 @Slf4j
 @Component
@@ -35,35 +33,32 @@ import java.util.Map;
 public class RepayLoanMenu {
 
     public static final String SERVICE = "repay";
+    public static final String STEP_OFFER = "OFFER";
     private static final String STEP_SELECT = "SELECT_LOAN";
     private static final String STEP_AMOUNT = "ENTER_AMOUNT";
-    private static final String STEP_CONFIRM = "CONFIRM";
+    private static final String STEP_PAYER = "PAYER";
+    private static final String STEP_NETWORK = "NETWORK";
+    private static final String STEP_PHONE = "PHONE";
 
     private final CommonMenus common;
     private final CommonHeadings headings;
     private final FineractService fineract;
     private final RepaymentService repaymentService;
-    private final InkomokoProperties props;
     private final com.inkomoko.mobilebanking.services.CountryService countries;
 
     public String processMenu(UssdSession s, String input) {
         String l = s.getLanguage();
         try {
             if (s.getStep() == null) return start(s);
-            if ("0".equals(input) && !STEP_CONFIRM.equals(s.getStep())) return common.backToMain(s);
-
+            if ("0".equals(input)) return back(s);
             return switch (s.getStep()) {
-                case STEP_SELECT -> {
-                    Long loanId = common.resolveLoanChoice(s, input);
-                    if (loanId == null) {
-                        s.setStep(null);
-                        yield headings.invalidChoice(l) + start(s);
-                    }
-                    yield amountPrompt(s, fineract.getLoanDetails(loanId), "");
-                }
+                case STEP_SELECT -> chooseLoan(s, input);
+                case STEP_OFFER -> chooseOffer(s, input);
                 case STEP_AMOUNT -> handleAmount(s, input);
-                case STEP_CONFIRM -> handleConfirm(s, input);
-                default -> common.backToMain(s);
+                case STEP_PAYER -> choosePayer(s, input);
+                case STEP_NETWORK -> chooseNetwork(s, input);
+                case STEP_PHONE -> handlePhone(s, input);
+                default -> start(s);
             };
         } catch (Exception e) {
             log.error("Repay flow failed msisdn={} step={} error={}", s.getMsisdn(), s.getStep(), e.getMessage());
@@ -71,40 +66,84 @@ public class RepayLoanMenu {
         }
     }
 
+    /** Opens the pay screen for a loan already chosen (for example from next due date). */
+    public String showOffer(UssdSession s, LoanSummaryDto loan) {
+        return offer(s, loan);
+    }
+
+    private String back(UssdSession s) {
+        return switch (s.getStep()) {
+            case STEP_SELECT -> common.backToMain(s);
+            case STEP_OFFER -> leaveOffer(s);
+            case STEP_AMOUNT, STEP_PAYER -> offer(s, fineract.getLoanDetails(s.getLoanId()));
+            case STEP_NETWORK -> payer(s);
+            case STEP_PHONE -> network(s);
+            default -> start(s);
+        };
+    }
+
+    /** One loan has no list to return to, so Back leaves the repayment flow. */
+    private String leaveOffer(UssdSession s) {
+        List<LoanSummaryDto> loans = fineract.getClientLoans(s.getClientId()).stream()
+                .filter(x -> x.status().isRepayable()).toList();
+        if (loans.size() <= 1) return common.backToMain(s);
+        s.setStep(STEP_SELECT);
+        return common.loanSelectionScreen(s, loans, common::loanListLabel);
+    }
+
     private String start(UssdSession s) {
         String l = s.getLanguage();
-        ETelecom telecom = PhoneUtils.detectTelecom(s.getNetworkCode(), s.getMsisdn());
-        if (telecom == null) {
-            return common.endWith(s, ESessionEndReason.COMPLETED, headings.text(l, "repay.telecom_unsupported"));
-        }
-        s.setTelecom(telecom);
-
+        s.setPayerMsisdn(null);
         List<LoanSummaryDto> loans = fineract.getClientLoans(s.getClientId()).stream()
                 .filter(x -> x.status().isRepayable())
                 .toList();
         if (loans.isEmpty()) {
             s.setStep(STEP_SELECT);
-            s.setLoanOptions("");
             return headings.noActiveLoan(l) + headings.back(l);
         }
-        if (loans.size() == 1) return amountPrompt(s, fineract.getLoanDetails(loans.get(0).loanId()), "");
+        if (loans.size() == 1) return offer(s, fineract.getLoanDetails(loans.get(0).loanId()));
         s.setStep(STEP_SELECT);
         return common.loanSelectionScreen(s, loans, common::loanListLabel);
     }
 
-    private String amountPrompt(UssdSession s, LoanSummaryDto loan, String prefix) {
+    private String chooseLoan(UssdSession s, String input) {
+        Long loanId = common.resolveLoanChoice(s, input);
+        if (loanId == null) {
+            s.setStep(null);
+            return headings.invalidChoice(s.getLanguage()) + start(s);
+        }
+        return offer(s, fineract.getLoanDetails(loanId));
+    }
+
+    private String offer(UssdSession s, LoanSummaryDto loan) {
         String l = s.getLanguage();
         if (loan.clientId() != null && !loan.clientId().equals(s.getClientId())) return common.unavailable(s);
         s.setLoanId(loan.loanId());
         s.setLoanAccountNo(loan.accountNo());
         s.setOutstanding(loan.totalOutstanding());
-        s.setStep(STEP_AMOUNT);
-        String min = GeneralMethods.rwf(countries.minRepayment());
-        String outstanding = GeneralMethods.rwf(loan.totalOutstanding());
-        String overdue = GeneralMethods.rwf(loan.totalOverdue());
-        return prefix + headings.text(l, "repay.amount_prompt", Map.of("account", loan.accountNo(),
-                "outstanding", outstanding, "overdue", overdue, "min", min))
+        s.setPayerMsisdn(null);
+        s.setStep(STEP_OFFER);
+        String balance = GeneralMethods.rwf(loan.totalOutstanding());
+        return headings.text(l, "repay.offer", Map.of("account", loan.accountNo(), "balance", balance))
                 + headings.back(l);
+    }
+
+    private String chooseOffer(UssdSession s, String input) {
+        String l = s.getLanguage();
+        if ("1".equals(input)) {
+            BigDecimal balance = GeneralMethods.nz(s.getOutstanding());
+            if (balance.signum() <= 0) {
+                return headings.text(l, "repay.above_balance", Map.of("balance", GeneralMethods.rwf(balance)))
+                        + "\n" + offer(s, fineract.getLoanDetails(s.getLoanId()));
+            }
+            s.setAmount(balance);
+            return payer(s);
+        }
+        if ("2".equals(input)) {
+            s.setStep(STEP_AMOUNT);
+            return headings.text(l, "repay.enter_amount") + headings.back(l);
+        }
+        return headings.invalidChoice(l) + offer(s, fineract.getLoanDetails(s.getLoanId()));
     }
 
     private String handleAmount(UssdSession s, String input) {
@@ -126,31 +165,75 @@ public class RepayLoanMenu {
         if (error != null) {
             return error + "\n" + headings.text(l, "repay.enter_amount") + headings.back(l);
         }
-
         s.setAmount(amount);
-        s.setStep(STEP_CONFIRM);
-        String wallet = walletName(s.getTelecom()) + " " + PhoneUtils.mask(s.getMsisdn());
-        String amt = GeneralMethods.rwf(amount);
-        return headings.text(l, "repay.confirm", Map.of("amount", amt, "account", s.getLoanAccountNo(),
-                "wallet", wallet)) + "\n" + headings.text(l, "repay.confirm_options");
+        return payer(s);
     }
 
-    private String handleConfirm(UssdSession s, String input) {
-        String l = s.getLanguage();
-        if ("2".equals(input) || "0".equals(input)) {
-            return common.endWith(s, ESessionEndReason.USER_EXIT,
-                    headings.text(l, "repay.cancelled") + " " + headings.thankYou(l));
-        }
-        if (!"1".equals(input)) {
-            return headings.invalidChoice(l)
-                    + headings.text(l, "repay.confirm_options");
-        }
+    private String payer(UssdSession s) {
+        s.setStep(STEP_PAYER);
+        s.setPayerMsisdn(null);
+        return headings.text(s.getLanguage(), "repay.payer", Map.of("amount", GeneralMethods.rwf(s.getAmount())))
+                + headings.back(s.getLanguage());
+    }
 
+    private String choosePayer(UssdSession s, String input) {
+        if ("1".equals(input)) {
+            ETelecom telecom = PhoneUtils.detectTelecom(s.getNetworkCode(), s.getMsisdn());
+            if (telecom == null) {
+                return common.endWith(s, ESessionEndReason.COMPLETED,
+                        headings.text(s.getLanguage(), "repay.telecom_unsupported"));
+            }
+            s.setTelecom(telecom);
+            s.setPayerMsisdn(null);
+            return push(s);
+        }
+        if ("2".equals(input)) return network(s);
+        return headings.invalidChoice(s.getLanguage()) + payer(s);
+    }
+
+    private String network(UssdSession s) {
+        s.setStep(STEP_NETWORK);
+        StringBuilder sb = new StringBuilder(headings.text(s.getLanguage(), "repay.network"));
+        int i = 1;
+        for (String name : countries.mobileNetworks()) {
+            sb.append('\n').append(i++).append(". ").append(name);
+        }
+        return sb.append(headings.back(s.getLanguage())).toString();
+    }
+
+    private String chooseNetwork(UssdSession s, String input) {
+        List<String> networks = countries.mobileNetworks();
+        int choice = GeneralMethods.parseInputAsInteger(input);
+        if (choice < 1 || choice > networks.size()) {
+            return headings.invalidChoice(s.getLanguage()) + network(s);
+        }
+        ETelecom telecom = PhoneUtils.detectTelecom(networks.get(choice - 1), null);
+        if (telecom == null) {
+            return headings.invalidChoice(s.getLanguage()) + network(s);
+        }
+        s.setTelecom(telecom);
+        s.setStep(STEP_PHONE);
+        return headings.text(s.getLanguage(), "repay.phone") + headings.back(s.getLanguage());
+    }
+
+    private String handlePhone(UssdSession s, String input) {
+        String phone = PhoneUtils.purify(input);
+        if (!phone.matches("[0-9]{9,15}")) {
+            return headings.text(s.getLanguage(), "repay.phone_invalid") + "\n"
+                    + headings.text(s.getLanguage(), "repay.phone") + headings.back(s.getLanguage());
+        }
+        s.setPayerMsisdn(phone);
+        return push(s);
+    }
+
+    private String push(UssdSession s) {
+        String l = s.getLanguage();
         RepaymentService.InitOutcome outcome = repaymentService.initiate(s);
-        String amt = GeneralMethods.rwf(s.getAmount());
+        String amount = GeneralMethods.rwf(s.getAmount());
+        String wallet = walletName(s.getTelecom());
         return switch (outcome.status()) {
-            case ACCEPTED -> common.endWith(s, ESessionEndReason.COMPLETED, headings.text(l, "repay.accepted",
-                    Map.of("amount", amt, "ref", outcome.tx().getReference())));
+            case ACCEPTED -> common.endWith(s, ESessionEndReason.COMPLETED,
+                    headings.text(l, "repay.initiated", Map.of("amount", amount, "wallet", wallet)));
             case DUPLICATE_PENDING -> common.endWith(s, ESessionEndReason.COMPLETED, headings.text(l, "repay.duplicate"));
             default -> common.endWith(s, ESessionEndReason.ERROR, headings.text(l, "repay.failed"));
         };

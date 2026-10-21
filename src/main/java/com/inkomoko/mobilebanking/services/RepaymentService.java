@@ -86,7 +86,8 @@ public class RepaymentService {
 
     public InitOutcome initiate(UssdSession s) {
         LocalDateTime now = DateUtility.nowKigali();
-        boolean pendingExists = repo.existsByMsisdnAndStatusInAndCreatedAtAfter(s.getMsisdn(),
+        String payer = s.getPayerMsisdn() == null || s.getPayerMsisdn().isBlank() ? s.getMsisdn() : s.getPayerMsisdn();
+        boolean pendingExists = repo.existsByMsisdnAndStatusInAndCreatedAtAfter(payer,
                 List.of(ETransactionStatus.INITIATED, ETransactionStatus.PENDING),
                 now.minusMinutes(props.getRepayment().getDuplicateWindowMinutes()));
         if (pendingExists) {
@@ -98,7 +99,7 @@ public class RepaymentService {
         RepaymentTransaction t = new RepaymentTransaction();
         t.setReference(Utility.generateRepaymentReference());
         t.setSessionId(s.getSessionId());
-        t.setMsisdn(s.getMsisdn());
+        t.setMsisdn(payer);
         t.setClientId(s.getClientId());
         t.setLoanId(s.getLoanId());
         t.setLoanAccountNo(s.getLoanAccountNo());

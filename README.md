@@ -34,7 +34,43 @@ npm run dev            # http://localhost:5173/portal/ (proxies /api to :9094)
 npm run build          # outputs to src/main/resources/static/portal (gitignored) for ./mvnw spring-boot:run
 ```
 
-## Run locally
+## Run with Docker Compose
+
+The app runs in Docker. PostgreSQL does not: use the Postgres already installed on your machine. The image builds the admin portal into the same process, so you do not run `npm` first. The first build compiles the portal and the Java app and takes several minutes. Later starts reuse that image.
+
+Core banking stays in **demo** mode, and payments and SMS stay in **mock** mode, so the simulator and portal work without Fineract or a payment gateway.
+
+1. Create the database (once), if it does not exist yet:
+
+```bash
+createdb -U postgres inkomoko_db
+```
+
+2. From `mobilebanking/`, copy the env file and set the Postgres user and password you actually use:
+
+```bash
+cp .env.example .env
+```
+
+`.env` uses `localhost:5432`. Compose runs the app on the host network, the same way staging does, so that address is the Postgres installed on the machine. The same file works for `./mvnw spring-boot:run`. Postgres can keep its default local-only setup.
+
+On Docker Desktop for Mac or Windows, turn on host networking once: **Settings → Resources → Network → Enable host networking**, then Apply & restart. Docker Engine on Linux already uses the host network.
+
+3. Start the app:
+
+```bash
+docker compose up --build
+```
+
+Flyway creates the schema on the first start. Sign in to the portal as `admin` / `admin@yopmail.com` with password `Admin@2026!` (you must change it at first sign-in).
+
+* USSD simulator: http://localhost:9094/simulator.html
+* Admin portal: http://localhost:9094/portal/
+* Swagger UI: http://localhost:9094/swagger-ui.html
+
+Stop with `docker compose down`. That does not delete the database.
+
+## Run locally without Docker
 
 ```bash
 createdb -U postgres inkomoko_db          # user/password: postgres/postgres (application.properties)
@@ -42,7 +78,7 @@ createdb -U postgres inkomoko_db          # user/password: postgres/postgres (ap
 ```
 
 * USSD simulator: http://localhost:9094/simulator.html
-* Admin portal: http://localhost:9094/portal/ (run `npm run build` in `frontend/` first when not using Docker)
+* Admin portal: http://localhost:9094/portal/ (run `npm run build` in `frontend/` first)
 * Swagger UI: http://localhost:9094/swagger-ui.html
 
 By default core banking runs in **demo** mode (`inkomoko.fineract.mode=demo`), and the payment gateway and SMS run in **mock** mode. The whole flow works without external systems:

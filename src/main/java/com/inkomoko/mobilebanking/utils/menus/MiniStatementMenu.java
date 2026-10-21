@@ -34,8 +34,8 @@ public class MiniStatementMenu {
 
     public static final String SERVICE = "statement";
     private static final String STEP_SELECT = "SELECT_LOAN";
-    private static final String STEP_DISPLAY = "DISPLAY";
-    private static final int ON_SCREEN = 5;
+    private static final String STEP_NONE = "NONE";
+    private static final int PAGE_SIZE = 3;
     private static final int SMS_MAX = 30;
     private static final Set<ELoanStatus> DISBURSED = EnumSet.of(ELoanStatus.ACTIVE, ELoanStatus.IN_ARREARS,
             ELoanStatus.SETTLED, ELoanStatus.CLOSED);
@@ -47,62 +47,103 @@ public class MiniStatementMenu {
     private final AuditService audit;
 
     public String processMenu(UssdSession s, String input) {
-        String l = s.getLanguage();
         try {
-            if (s.getStep() == null) {
-                List<LoanSummaryDto> loans = fineract.getClientLoans(s.getClientId()).stream()
-                        .filter(x -> DISBURSED.contains(x.status()))
-                        .sorted((a, b) -> Boolean.compare(b.status().isRepayable(), a.status().isRepayable()))
-                        .toList();
-                if (loans.isEmpty()) {
-                    s.setStep(STEP_DISPLAY);
-                    return headings.noLoans(l) + headings.back(l);
-                }
-                if (loans.size() == 1) return statement(s, loans.get(0));
-                s.setStep(STEP_SELECT);
-                return common.loanSelectionScreen(s, loans, common::loanListLabel);
-            }
-            if ("0".equals(input)) return common.backToMain(s);
-
-            if (STEP_SELECT.equals(s.getStep())) {
-                Long loanId = common.resolveLoanChoice(s, input);
-                if (loanId == null) {
-                    s.setStep(null);
-                    return headings.invalidChoice(l) + processMenu(s, null);
-                }
-                return statement(s, fineract.getLoanDetails(loanId));
-            }
-
-            if ("1".equals(input) && s.getLoanId() != null) return sendFullStatement(s);
-            return common.invalidThen(s, smsOption(l) + headings.back(l));
+            if (s.getStep() == null) return start(s);
+            if ("0".equals(input)) return back(s);
+            String step = s.getStep();
+            if (STEP_SELECT.equals(step)) return chooseLoan(s, input);
+            if (step.startsWith("PAGE:")) return pageInput(s, input, pageOf(step));
+            if (step.startsWith("SMS:")) return smsInput(s, input, pageOf(step));
+            return start(s);
         } catch (Exception e) {
             log.error("Mini statement failed msisdn={} error={}", s.getMsisdn(), e.getMessage());
             return common.unavailable(s);
         }
     }
 
-    private String statement(UssdSession s, LoanSummaryDto loan) {
+    private String start(UssdSession s) {
+        String l = s.getLanguage();
+        List<LoanSummaryDto> loans = fineract.getClientLoans(s.getClientId()).stream()
+                .filter(x -> DISBURSED.contains(x.status()))
+                .sorted((a, b) -> Boolean.compare(b.status().isRepayable(), a.status().isRepayable()))
+                .toList();
+        if (loans.isEmpty()) {
+            s.setStep(STEP_NONE);
+            return headings.noLoans(l) + headings.back(l);
+        }
+        if (loans.size() == 1) return statement(s, fineract.getLoanDetails(loans.get(0).loanId()), 0);
+        s.setStep(STEP_SELECT);
+        return common.loanSelectionScreen(s, loans, common::loanListLabel);
+    }
+
+    private String back(UssdSession s) {
+        String step = s.getStep();
+        if (step != null && step.startsWith("SMS:")) return statement(s, fineract.getLoanDetails(s.getLoanId()), pageOf(step));
+        if (step != null && step.startsWith("PAGE:") && s.getLoanOptions() != null) {
+            s.setStep(null);
+            return start(s);
+        }
+        return common.backToMain(s);
+    }
+
+    private String chooseLoan(UssdSession s, String input) {
+        Long loanId = common.resolveLoanChoice(s, input);
+        if (loanId == null) {
+            s.setStep(null);
+            return headings.invalidChoice(s.getLanguage()) + start(s);
+        }
+        return statement(s, fineract.getLoanDetails(loanId), 0);
+    }
+
+    private String pageInput(UssdSession s, String input, int page) {
+        if ("1".equals(input)) return confirmSms(s, page);
+        if ("9".equals(input)) return statement(s, fineract.getLoanDetails(s.getLoanId()), page + 1);
+        return headings.invalidChoice(s.getLanguage()) + statement(s, fineract.getLoanDetails(s.getLoanId()), page);
+    }
+
+    private String confirmSms(UssdSession s, int page) {
+        s.setStep("SMS:" + page);
+        return headings.text(s.getLanguage(), "statement.sms_confirm") + headings.back(s.getLanguage());
+    }
+
+    private String smsInput(UssdSession s, String input, int page) {
+        if ("1".equals(input)) return sendFullStatement(s);
+        return headings.invalidChoice(s.getLanguage()) + confirmSms(s, page);
+    }
+
+    private String statement(UssdSession s, LoanSummaryDto loan, int page) {
         String l = s.getLanguage();
         if (loan.clientId() != null && !loan.clientId().equals(s.getClientId())) return common.unavailable(s);
         s.setLoanId(loan.loanId());
         s.setLoanAccountNo(loan.accountNo());
-        s.setStep(STEP_DISPLAY);
-        s.setEndReason(ESessionEndReason.COMPLETED);
-        audit.ussd(s.getMsisdn(), s.getSessionId(), "MINI_STATEMENT", String.valueOf(loan.loanId()), true, null);
-
-        List<RepaymentDto> rows = fineract.getRepayments(loan.loanId(), ON_SCREEN);
+        List<RepaymentDto> rows = fineract.getRepayments(loan.loanId(), SMS_MAX);
         if (rows.isEmpty()) {
-            return headings.text(l, "statement.none", Map.of("account", loan.accountNo()))
-                    + headings.back(l);
+            s.setStep(STEP_NONE);
+            return headings.text(l, "statement.none", Map.of("account", loan.accountNo())) + headings.back(l);
         }
-        StringBuilder sb = new StringBuilder(headings.text(l, "statement.header",
-                Map.of("account", loan.accountNo())));
-        for (RepaymentDto r : rows) {
-            sb.append('\n').append(DateUtility.shortDate(r.date())).append(' ')
-                    .append(GeneralMethods.formatAmount(r.amount())).append(' ')
-                    .append(shortRef(r.reference()));
+        int pages = (rows.size() + PAGE_SIZE - 1) / PAGE_SIZE;
+        int shown = Math.min(Math.max(page, 0), pages - 1);
+        if (shown == 0) {
+            audit.ussd(s.getMsisdn(), s.getSessionId(), "MINI_STATEMENT", String.valueOf(loan.loanId()), true, null);
         }
-        return sb.append('\n').append(smsOption(l)).append(headings.back(l)).toString();
+        s.setStep("PAGE:" + shown);
+        StringBuilder sb = new StringBuilder(headings.text(l, "statement.header", Map.of("account", loan.accountNo())));
+        rows.subList(shown * PAGE_SIZE, Math.min(rows.size(), (shown + 1) * PAGE_SIZE)).forEach(r ->
+                sb.append('\n').append(DateUtility.shortDate(r.date())).append(' ')
+                        .append(GeneralMethods.formatAmount(r.amount())).append(' ')
+                        .append(shortRef(r.reference())));
+        if (shown + 1 < pages) sb.append('\n').append(headings.text(l, "statement.next"));
+        return sb.append('\n').append(headings.text(l, "statement.sms_option")).append(headings.back(l)).toString();
+    }
+
+    private static int pageOf(String step) {
+        int i = step.indexOf(':');
+        if (i < 0) return 0;
+        try {
+            return Integer.parseInt(step.substring(i + 1));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private String sendFullStatement(UssdSession s) {
@@ -122,10 +163,6 @@ public class MiniStatementMenu {
                 rows.size() + " rows");
         s.end(ESessionEndReason.COMPLETED);
         return headings.text(l, "statement.sms_sent") + " " + headings.thankYou(l);
-    }
-
-    private String smsOption(String l) {
-        return headings.text(l, "statement.sms_option");
     }
 
     private static String shortRef(String ref) {
