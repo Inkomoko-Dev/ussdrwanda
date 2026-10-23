@@ -212,19 +212,17 @@ public class AdminUserService {
      * If the e-mail fails, the password is left unchanged.
      */
     @Transactional
-    public UserView emailDefaultPassword(Long id, AdminPrincipal actor) {
+    public UserView emailDefaultPassword(String email, AdminPrincipal actor) {
         AdminUser caller = require(actor.id());
         if (caller.getRole() == null || !caller.getRole().isSystemRole()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Only a Super Administrator can email a default password.");
         }
-        AdminUser u = require(id);
+        String address = email == null ? "" : email.trim();
+        AdminUser u = users.findByEmailIgnoreCase(address)
+                .orElseThrow(() -> new IllegalArgumentException("No portal user with e-mail " + address));
         if (u.getStatus() != EAdminUserStatus.ACTIVE) {
             throw new IllegalArgumentException("This account is disabled. Enable it before emailing a password.");
-        }
-        String email = u.getEmail();
-        if (email == null || email.isBlank()) {
-            throw new IllegalArgumentException("This user has no e-mail address.");
         }
         String password = props.getSecurity().getBootstrapAdminPassword();
         if (password == null || password.isBlank()) {
@@ -236,7 +234,7 @@ public class AdminUserService {
         u.setLockedUntil(null);
         u = users.save(u);
         try {
-            mail.send(email, "Inkomoko portal sign-in",
+            mail.send(u.getEmail(), "Inkomoko portal sign-in",
                     "A Super Administrator reset your Inkomoko portal password.\n\n"
                             + "Username: " + u.getUsername() + "\n"
                             + "Password: " + password + "\n\n"
@@ -245,7 +243,7 @@ public class AdminUserService {
             log.error("Default password e-mail failed user={} error={}", u.getUsername(), e.getMessage());
             throw new IllegalStateException("The password was not changed because the e-mail could not be sent.");
         }
-        audit.admin(actor.username(), "PORTAL_PASSWORD_EMAILED", u.getUsername(), true, "to=" + email);
+        audit.admin(actor.username(), "PORTAL_PASSWORD_EMAILED", u.getUsername(), true, "to=" + u.getEmail());
         return view(u);
     }
 

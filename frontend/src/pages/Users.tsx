@@ -24,7 +24,7 @@ export default function Users() {
     setErr('');
     setNotice('');
     try {
-      await api.post(`/api/admin/users/${u.id}/email-default-password`);
+      await api.post('/api/admin/users/email-default-password', { email: u.email });
       setNotice(`Default sign-in details sent to ${u.email}.`);
       reload();
     } catch (e) { setErr((e as Error).message); }

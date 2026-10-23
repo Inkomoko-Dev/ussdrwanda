@@ -49,11 +49,11 @@ public class AdminUserController {
         return ResponseEntity.ok(ApiResponse.ok("Password reset", users.resetPassword(id, me.username())));
     }
 
-    @PostMapping("/{id}/email-default-password")
+    @PostMapping("/email-default-password")
     @PreAuthorize("hasAuthority('USER_MANAGE')")
-    public ResponseEntity<ApiResponse<UserView>> emailDefaultPassword(@PathVariable Long id,
+    public ResponseEntity<ApiResponse<UserView>> emailDefaultPassword(@Valid @RequestBody EmailDefaultPasswordRequest req,
                                                                       @AuthenticationPrincipal AdminPrincipal me) {
-        UserView user = users.emailDefaultPassword(id, me);
+        UserView user = users.emailDefaultPassword(req.email(), me);
         return ResponseEntity.ok(ApiResponse.ok("Default sign-in details sent to " + user.email(), user));
     }
 

@@ -164,9 +164,8 @@ public class CommonHeadings {
         return line(l, "pin.created");
     }
 
-    public String enterPin(String l, String firstName) {
-        if (firstName == null || firstName.isBlank()) return messages.text(l, "pin.enter");
-        return messages.text(l, "pin.enter.named", Map.of("name", firstName.trim()));
+    public String enterPin(String l, int digits) {
+        return messages.text(l, "pin.enter", Map.of("digits", digits));
     }
 
     public String wrongPin(String l, int remaining) {

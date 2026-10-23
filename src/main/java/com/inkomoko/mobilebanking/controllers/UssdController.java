@@ -406,7 +406,7 @@ public class UssdController {
             }
             default -> {
                 s.setStep(STEP_PIN_ENTRY);
-                yield headings.enterPin(lang, CommonMenus.firstName(c.displayName()));
+                yield headings.enterPin(lang, props.getUssd().getPinLength());
             }
         };
     }
@@ -480,7 +480,7 @@ public class UssdController {
             case WRONG -> {
                 audit.ussd(s.getMsisdn(), s.getSessionId(), "LOGIN_FAILED", client, false, null);
                 yield headings.wrongPin(l, pinService.remainingAttempts(s.getMsisdn()))
-                        + headings.enterPin(l, null);
+                        + headings.enterPin(l, props.getUssd().getPinLength());
             }
             case LOCKED -> {
                 audit.ussd(s.getMsisdn(), s.getSessionId(), "LOGIN_FAILED", client, false, null);

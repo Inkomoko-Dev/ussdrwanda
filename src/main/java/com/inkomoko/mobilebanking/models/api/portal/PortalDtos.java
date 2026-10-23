@@ -62,6 +62,10 @@ public final class PortalDtos {
                                     EAdminUserStatus status) {
     }
 
+    /** Super Administrator sends the default sign-in password to this address. */
+    public record EmailDefaultPasswordRequest(@NotBlank @Email @Size(max = 120) String email) {
+    }
+
     /** Returned once when a user is created or a password reset: share it with the user securely. */
     public record UserWithTempPassword(UserView user, String temporaryPassword) {
     }
