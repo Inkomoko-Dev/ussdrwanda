@@ -17,9 +17,13 @@ import com.inkomoko.mobilebanking.security.AuthException;
 import com.inkomoko.mobilebanking.security.JwtService;
 import com.inkomoko.mobilebanking.services.AuditService;
 import com.inkomoko.mobilebanking.services.CountryService;
+import com.inkomoko.mobilebanking.services.integration.MailService;
 import com.inkomoko.mobilebanking.utils.DateUtility;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +32,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /** Portal users: login with lockout, password changes, and user administration. */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AdminUserService {
@@ -44,6 +49,7 @@ public class AdminUserService {
     private final AuditService audit;
     private final CountryService countryService;
     private final InkomokoProperties props;
+    private final MailService mail;
 
     // ── Authentication ───────────────────────────────────────────────────
 
@@ -200,6 +206,49 @@ public class AdminUserService {
         return new UserWithTempPassword(view(u), temp);
     }
 
+    /**
+     * Super Administrator only. Sets the configured default portal password, clears a lock,
+     * and e-mails the username and password to the user. The password is not returned.
+     * If the e-mail fails, the password is left unchanged.
+     */
+    @Transactional
+    public UserView emailDefaultPassword(Long id, AdminPrincipal actor) {
+        AdminUser caller = require(actor.id());
+        if (caller.getRole() == null || !caller.getRole().isSystemRole()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only a Super Administrator can email a default password.");
+        }
+        AdminUser u = require(id);
+        if (u.getStatus() != EAdminUserStatus.ACTIVE) {
+            throw new IllegalArgumentException("This account is disabled. Enable it before emailing a password.");
+        }
+        String email = u.getEmail();
+        if (email == null || email.isBlank()) {
+            throw new IllegalArgumentException("This user has no e-mail address.");
+        }
+        String password = props.getSecurity().getBootstrapAdminPassword();
+        if (password == null || password.isBlank()) {
+            throw new IllegalStateException("The default portal password is not configured.");
+        }
+        setPassword(u, password);
+        u.setMustChangePassword(true);
+        u.setFailedAttempts(0);
+        u.setLockedUntil(null);
+        u = users.save(u);
+        try {
+            mail.send(email, "Inkomoko portal sign-in",
+                    "A Super Administrator reset your Inkomoko portal password.\n\n"
+                            + "Username: " + u.getUsername() + "\n"
+                            + "Password: " + password + "\n\n"
+                            + "Sign in and choose a new password. This message is the only copy of that password.\n");
+        } catch (RuntimeException e) {
+            log.error("Default password e-mail failed user={} error={}", u.getUsername(), e.getMessage());
+            throw new IllegalStateException("The password was not changed because the e-mail could not be sent.");
+        }
+        audit.admin(actor.username(), "PORTAL_PASSWORD_EMAILED", u.getUsername(), true, "to=" + email);
+        return view(u);
+    }
+
     @Transactional
     public UserView unlock(Long id, String by) {
         AdminUser u = require(id);
@@ -311,6 +360,7 @@ public class AdminUserService {
         boolean locked = u.getLockedUntil() != null && u.getLockedUntil().isAfter(DateUtility.nowKigali());
         return new UserView(u.getId(), u.getUsername(), u.getFullName(), u.getEmail(), u.getPhone(),
                 u.getRole().getId(), u.getRole().getName(), u.getCountryCode(), u.getStatus(), locked,
-                u.getLockedUntil(), u.isMustChangePassword(), u.getLastLoginAt(), u.getCreatedAt(), u.getCreatedBy());
+                u.getLockedUntil(), u.isMustChangePassword(), u.getLastLoginAt(), u.getCreatedAt(), u.getCreatedBy(),
+                u.getRole().isSystemRole());
     }
 }

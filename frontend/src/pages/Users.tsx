@@ -5,17 +5,29 @@ import { Alert, Card, Field, Modal, PageHead, StatusBadge, fmtDate, useLoad } fr
 import type { Country, RoleView, UserView } from '../types';
 
 export default function Users() {
-  const { can } = useAuth();
+  const { can, me } = useAuth();
   const { data, error, reload } = useLoad(() => api.get<UserView[]>('/api/admin/users'), []);
   const roles = useLoad(() => api.get<RoleView[]>('/api/admin/roles'), []).data ?? [];
   const countries = useLoad(() => api.get<Country[]>('/api/admin/countries'), []).data ?? [];
   const [edit, setEdit] = useState<Partial<UserView> | null>(null);
   const [secret, setSecret] = useState<{ user: UserView; temporaryPassword: string } | null>(null);
   const [err, setErr] = useState('');
+  const [notice, setNotice] = useState('');
 
   async function resetPassword(u: UserView) {
     if (!confirm(`Reset the password of ${u.fullName}? They will get a temporary password.`)) return;
     try { setSecret(await api.post(`/api/admin/users/${u.id}/reset-password`)); reload(); } catch (e) { setErr((e as Error).message); }
+  }
+  async function emailDefault(u: UserView) {
+    const own = me?.user.id === u.id ? ' You will be signed out and must use the password in that e-mail.' : '';
+    if (!confirm(`Reset ${u.fullName}'s password to the default and send it to ${u.email}?${own}`)) return;
+    setErr('');
+    setNotice('');
+    try {
+      await api.post(`/api/admin/users/${u.id}/email-default-password`);
+      setNotice(`Default sign-in details sent to ${u.email}.`);
+      reload();
+    } catch (e) { setErr((e as Error).message); }
   }
   async function unlock(u: UserView) {
     try { await api.post(`/api/admin/users/${u.id}/unlock`); reload(); } catch (e) { setErr((e as Error).message); }
@@ -26,6 +38,7 @@ export default function Users() {
       <PageHead title="Users" subtitle="People who can sign in to this portal"
         actions={can('USER_MANAGE') && <button className="btn" onClick={() => setEdit({ status: 'ACTIVE' })}>Add user</button>} />
       <Alert>{error || err}</Alert>
+      <Alert kind="success">{notice}</Alert>
       <Card>
         <div className="table-wrap">
           <table>
@@ -41,6 +54,7 @@ export default function Users() {
                   <td>{can('USER_MANAGE') && <div className="actions">
                     <button className="btn ghost small" onClick={() => setEdit(u)}>Edit</button>
                     <button className="btn ghost small" onClick={() => resetPassword(u)}>Reset password</button>
+                    {me?.user.systemRole && u.email && <button className="btn ghost small" onClick={() => emailDefault(u)}>Email default password</button>}
                     {u.locked && <button className="btn secondary small" onClick={() => unlock(u)}>Unlock</button>}
                   </div>}</td>
                 </tr>

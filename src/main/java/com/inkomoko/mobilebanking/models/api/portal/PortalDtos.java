@@ -42,7 +42,7 @@ public final class PortalDtos {
     public record UserView(Long id, String username, String fullName, String email, String phone, Long roleId,
                            String roleName, String countryCode, EAdminUserStatus status, boolean locked,
                            LocalDateTime lockedUntil, boolean mustChangePassword, LocalDateTime lastLoginAt,
-                           LocalDateTime createdAt, String createdBy) {
+                           LocalDateTime createdAt, String createdBy, boolean systemRole) {
     }
 
     public record CreateUserRequest(

@@ -22,6 +22,7 @@ public class InkomokoProperties {
     private Fineract fineract = new Fineract();
     private Payment payment = new Payment();
     private Sms sms = new Sms();
+    private Mail mail = new Mail();
     private Demo demo = new Demo();
     private Security security = new Security();
 
@@ -84,6 +85,18 @@ public class InkomokoProperties {
         private String baseUrl;
         private String apiKey;
         private String senderId = "INKOMOKO";
+    }
+
+    /** Portal e-mail (default-password delivery). mode=mock logs the message; mode=smtp sends it. */
+    @Getter @Setter
+    public static class Mail {
+        private String mode = "mock";
+        private String from = "noreply@inkomoko.example";
+        private String host = "";
+        private int port = 587;
+        private String username = "";
+        private String password = "";
+        private boolean starttls = true;
     }
 
     /** Admin portal security. */

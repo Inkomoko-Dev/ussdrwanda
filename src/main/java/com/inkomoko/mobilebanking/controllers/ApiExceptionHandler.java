@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 /** Maps service-layer validation errors on the back-office API to clean JSON responses. */
 @RestControllerAdvice(basePackages = {"com.inkomoko.mobilebanking.controllers.admin",
@@ -15,6 +16,12 @@ public class ApiExceptionHandler {
     @ExceptionHandler(com.inkomoko.mobilebanking.security.AuthException.class)
     public ResponseEntity<ApiResponse<Void>> unauthorized(com.inkomoko.mobilebanking.security.AuthException e) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.fail(e.getMessage()));
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiResponse<Void>> status(ResponseStatusException e) {
+        String message = e.getReason() == null ? e.getMessage() : e.getReason();
+        return ResponseEntity.status(e.getStatusCode()).body(ApiResponse.fail(message));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

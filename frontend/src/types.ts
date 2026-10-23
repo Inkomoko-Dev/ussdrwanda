@@ -28,7 +28,7 @@ export interface PasswordPolicy {
 export interface UserView {
   id: number; username: string; fullName: string; email?: string; phone?: string; roleId: number; roleName: string;
   countryCode?: string; status: 'ACTIVE' | 'DISABLED'; locked: boolean; lockedUntil?: string; mustChangePassword: boolean;
-  lastLoginAt?: string; createdAt: string; createdBy?: string;
+  lastLoginAt?: string; createdAt: string; createdBy?: string; systemRole?: boolean;
 }
 
 export interface Me {
