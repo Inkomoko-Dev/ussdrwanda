@@ -7,6 +7,7 @@ import com.inkomoko.mobilebanking.services.admin.PasswordPolicyService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -21,6 +22,8 @@ import java.io.IOException;
 
 /**
  * Security:
+ *   POST /api/admin/users/email-default-password
+ *                               open: emails the default password to a Super Administrator
  *   /api/admin/**               JWT required; each endpoint checks its privilege (@PreAuthorize)
  *   /api/auth/me, change-pwd    JWT required
  *   everything else             open: USSD gateway, payment callback (own token), login,
@@ -53,6 +56,7 @@ public class SecurityConfig {
                 .formLogin(f -> f.disable())
                 .logout(l -> l.disable())
                 .authorizeHttpRequests(a -> a
+                        .requestMatchers(HttpMethod.POST, "/api/admin/users/email-default-password").permitAll()
                         .requestMatchers("/api/admin/**").authenticated()
                         .requestMatchers("/api/auth/me", "/api/auth/change-password").authenticated()
                         .anyRequest().permitAll())

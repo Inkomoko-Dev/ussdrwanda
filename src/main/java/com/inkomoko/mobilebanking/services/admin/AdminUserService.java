@@ -21,9 +21,7 @@ import com.inkomoko.mobilebanking.services.integration.MailService;
 import com.inkomoko.mobilebanking.utils.DateUtility;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.server.ResponseStatusException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -207,20 +205,18 @@ public class AdminUserService {
     }
 
     /**
-     * Super Administrator only. Sets the configured default portal password, clears a lock,
-     * and e-mails the username and password to the user. The password is not returned.
-     * If the e-mail fails, the password is left unchanged.
+     * No sign-in required. Only a Super Administrator account can be reset. The default
+     * password is e-mailed to that address and is not returned. If the e-mail fails, the
+     * password is left unchanged.
      */
     @Transactional
-    public UserView emailDefaultPassword(String email, AdminPrincipal actor) {
-        AdminUser caller = require(actor.id());
-        if (caller.getRole() == null || !caller.getRole().isSystemRole()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only a Super Administrator can email a default password.");
-        }
+    public String emailDefaultPassword(String email) {
         String address = email == null ? "" : email.trim();
         AdminUser u = users.findByEmailIgnoreCase(address)
                 .orElseThrow(() -> new IllegalArgumentException("No portal user with e-mail " + address));
+        if (u.getRole() == null || !u.getRole().isSystemRole()) {
+            throw new IllegalArgumentException("Only the Super Administrator password can be reset this way.");
+        }
         if (u.getStatus() != EAdminUserStatus.ACTIVE) {
             throw new IllegalArgumentException("This account is disabled. Enable it before emailing a password.");
         }
@@ -235,7 +231,7 @@ public class AdminUserService {
         u = users.save(u);
         try {
             mail.send(u.getEmail(), "Inkomoko portal sign-in",
-                    "A Super Administrator reset your Inkomoko portal password.\n\n"
+                    "Your Inkomoko portal password was reset.\n\n"
                             + "Username: " + u.getUsername() + "\n"
                             + "Password: " + password + "\n\n"
                             + "Sign in and choose a new password. This message is the only copy of that password.\n");
@@ -243,8 +239,8 @@ public class AdminUserService {
             log.error("Default password e-mail failed user={} error={}", u.getUsername(), e.getMessage());
             throw new IllegalStateException("The password was not changed because the e-mail could not be sent.");
         }
-        audit.admin(actor.username(), "PORTAL_PASSWORD_EMAILED", u.getUsername(), true, "to=" + u.getEmail());
-        return view(u);
+        audit.admin(u.getUsername(), "PORTAL_PASSWORD_EMAILED", u.getUsername(), true, "to=" + u.getEmail());
+        return u.getEmail();
     }
 
     @Transactional

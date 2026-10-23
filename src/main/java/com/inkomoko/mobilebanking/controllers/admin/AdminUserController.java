@@ -50,11 +50,9 @@ public class AdminUserController {
     }
 
     @PostMapping("/email-default-password")
-    @PreAuthorize("hasAuthority('USER_MANAGE')")
-    public ResponseEntity<ApiResponse<UserView>> emailDefaultPassword(@Valid @RequestBody EmailDefaultPasswordRequest req,
-                                                                      @AuthenticationPrincipal AdminPrincipal me) {
-        UserView user = users.emailDefaultPassword(req.email(), me);
-        return ResponseEntity.ok(ApiResponse.ok("Default sign-in details sent to " + user.email(), user));
+    public ResponseEntity<ApiResponse<Void>> emailDefaultPassword(@Valid @RequestBody EmailDefaultPasswordRequest req) {
+        String email = users.emailDefaultPassword(req.email());
+        return ResponseEntity.ok(ApiResponse.ok("Default sign-in details sent to " + email));
     }
 
     @PostMapping("/{id}/unlock")
