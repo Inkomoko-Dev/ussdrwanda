@@ -11,6 +11,7 @@ const GROUPS: Record<string, string> = {
   common: 'General', session: 'Session', client: 'Customer checks', pin: 'PIN', loan: 'Loans & status',
   balance: '1. Check balance', statement: '3. Mini statement', repay: '4. Repay loan', help: '5. Help', sms: 'SMS messages',
 };
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const fill = (t: string, v: Record<string, string>) => t.replace(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g, (m, k) => v[k] ?? m);
 
 export default function UssdTexts() {
@@ -25,9 +26,15 @@ export default function UssdTexts() {
   const [onlyCustom, setOnlyCustom] = useState(false);
   const [onlyMissing, setOnlyMissing] = useState(true);
   const [open, setOpen] = useState<string | null>(null);
+  // Pagination state
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(1);
+
   const { data, error, reload } = useLoad(() => api.get<MessageCatalog>(
     `/api/admin/messages?country=${encodeURIComponent(scope)}${translate ? `&languages=${encodeURIComponent(translate)}` : ''}`),
   [scope, translate]);
+  // Reset pagination when the selected filters change.
+  useEffect(() => {setPage(1);}, [scope, translate, group, q, onlyCustom, onlyMissing, pageSize]);
 
   const setTranslate = (code: string, keepOpen = false) => {
     const next = new URLSearchParams(params);
@@ -36,6 +43,7 @@ export default function UssdTexts() {
     if (!keepOpen) setOpen(null);
   };
 
+  // Apply filters before pagination.
   const rows = useMemo(() => (data?.messages ?? []).filter((m) => {
     if (group && m.group !== group) return false;
     const texts = Object.values(m.texts);
@@ -45,8 +53,21 @@ export default function UssdTexts() {
     const s = q.toLowerCase();
     return m.key.toLowerCase().includes(s) || texts.some((t) => t?.effective?.toLowerCase().includes(s));
   }), [data, group, q, onlyCustom, onlyMissing, translate]);
+  // Calculate pagination.
+  const totalRows = rows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalRows);
+  // Only render the records for the current page.
+  const visibleRows = useMemo(() => rows.slice(startIndex, startIndex + pageSize),[rows, startIndex, pageSize]);
+  // Display at most five page-number buttons.
+  const pageNumbers = useMemo(() => {const start = Math.max(1,Math.min(currentPage - 2, totalPages - 4));
+    const end = Math.min(totalPages, start + 4);
+    return Array.from({ length: end - start + 1 },(_, i) => start + i,);}, [currentPage, totalPages]);
 
-  const groups = useMemo(() => [...new Set((data?.messages ?? []).map((m) => m.group))], [data]);
+  const groups = useMemo(() => [...new Set((data?.messages ?? []).map((m) => m.group))],[data]);
+
   const entry = data?.messages.find((m) => m.key === open);
   const target = translate ? find(translate) : undefined;
   const done = translate ? (data?.messages ?? []).filter((m) => m.texts[translate]?.translated).length : 0;
@@ -71,7 +92,7 @@ export default function UssdTexts() {
         <div className="translate-banner">
           <div className="grow">
             <strong>Translating {target?.englishName ?? translate}</strong>
-            <span className="sub-inline"> · {target?.charset === 'UCS2' ? 'UCS-2: any script, about 80 characters per screen' : 'GSM-7: no accents, 182 characters per screen'} · saved for all countries</span>
+            <span className="sub-inline">{' · '}{target?.charset === 'UCS2' ? 'UCS-2: any script, about 80 characters per screen' : 'GSM-7: no accents, 182 characters per screen'}{' · saved for all countries'}</span>
             <div className="progress" aria-label={`${done} of ${total} translated`}><span style={{ width: `${total ? (done / total) * 100 : 0}%` }} /></div>
             <span className="sub-inline">{done} of {total} texts translated.{' '}
               {done >= total && total > 0 ? 'Complete: it can now be offered in a country (Administration → Countries).'
@@ -79,11 +100,12 @@ export default function UssdTexts() {
           </div>
           <button className="btn secondary small" onClick={() => setTranslate('')}>Done</button>
         </div>
-      ) : incomplete.length > 0 && can('MESSAGE_MANAGE') && (
+      ) : (incomplete.length > 0 && can('MESSAGE_MANAGE') && (
         <Alert kind="info">
-          {incomplete.map((l) => `${l.englishName} (${l.translated}/${l.total})`).join(', ')} {incomplete.length === 1 ? 'is' : 'are'} not fully translated yet.{' '}
+          {incomplete.map((l) => `${l.englishName} (${l.translated}/${l.total})`).join(', ')}{' '} {incomplete.length === 1 ? 'is' : 'are'} not fully translated yet.{' '}
           <button className="linklike" onClick={() => setTranslate(incomplete[0].code)}>Translate {incomplete[0].englishName}</button>
         </Alert>
+        )
       )}
 
       <div className="toolbar">
@@ -114,10 +136,18 @@ export default function UssdTexts() {
         {!data ? <div className="empty">Loading…</div> : rows.length === 0 ? (
           <div className="empty">{translate && onlyMissing ? 'Everything is translated.' : 'No texts match.'}</div>
         ) : (
-          <div className="table-wrap">
+        <>
+      <div className="table-wrap">
+       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+         <label htmlFor="rows-per-page">Rows per page</label>
+         <select id="rows-per-page" aria-label="Rows per page" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}
+          style={{ width: 75, padding: '5px 8px', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', cursor: 'pointer',}}>
+         {PAGE_SIZE_OPTIONS.map((size) => (<option key={size} value={size}>{size}</option>))}
+         </select>
+        </div>
             <table className="texts-table">
               <thead><tr><th>Screen</th>{data.languages.map((l) => <th key={l}>{label(l)}{translate && l === 'en' ? ' (reference)' : ''}</th>)}</tr></thead>
-              <tbody>{rows.map((m) => (
+              <tbody>{visibleRows.map((m) => (
                 <tr key={m.key} className="clickable" onClick={() => setOpen(m.key)}>
                   <td className="text-key"><strong>{GROUPS[m.group] ?? m.group}</strong><code>{m.key}</code></td>
                   {data.languages.map((l) => {
@@ -140,8 +170,35 @@ export default function UssdTexts() {
               ))}</tbody>
             </table>
           </div>
-        )}
-      </Card>
+      {/* Pagination controls */}
+      <div className="toolbar" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', marginTop: 16 }}>
+        <span className="sub-inline">Showing {startIndex + 1}–{endIndex} of {totalRows}</span>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }} aria-label="Pagination">
+          <button type="button" className="btn secondary small" disabled={currentPage === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Previous</button>
+          {pageNumbers[0] > 1 && (
+            <>
+              <button type="button" className="btn secondary small" onClick={() => setPage(1)}>1</button>
+              {pageNumbers[0] > 2 && <span>…</span>}
+            </>
+          )}
+
+          {pageNumbers.map((pageNumber) => (
+            <button type="button" key={pageNumber} className={pageNumber === currentPage ? 'btn small' : 'btn secondary small'} aria-current={pageNumber === currentPage ? 'page' : undefined} onClick={() => setPage(pageNumber)}>{pageNumber}</button>
+          ))}
+          {pageNumbers[pageNumbers.length - 1] < totalPages && (
+            <>
+              {pageNumbers[pageNumbers.length - 1] < totalPages - 1 && <span>…</span>}
+              <button type="button" className="btn secondary small" onClick={() => setPage(totalPages)}>{totalPages}</button>
+            </>
+          )}
+
+          <button type="button" className="btn secondary small" disabled={currentPage === totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>Next</button>
+        </div>
+      </div>
+    </>
+  )}
+</Card>
       {entry && data && (
         <EditModal entry={entry} catalog={data} translate={translate} onClose={() => setOpen(null)} onChanged={changed}
           onTranslate={(code) => setTranslate(code, true)}
