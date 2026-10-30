@@ -38,8 +38,9 @@ public class PinService {
     @Transactional
     public EClientState resolveState(String msisdn, Long clientId, String sessionId) {
         Optional<ClientPin> opt = pinRepo.findByMsisdn(msisdn);
-        // No record: the client has not been onboarded by Inkomoko staff (portal → Customers → Onboard).
-        if (opt.isEmpty()) return EClientState.NOT_ONBOARDED;
+        // No record yet: a customer registered in core banking accepts the terms and creates a PIN;
+        // setPin then stores them (registration channel SELF).
+        if (opt.isEmpty()) return EClientState.PIN_NOT_SET;
         ClientPin pin = opt.get();
         // Number now belongs to a different Fineract client (recycled SIM): old PIN must not work.
         if (pin.getClientId() != null && clientId != null && !pin.getClientId().equals(clientId)) {
