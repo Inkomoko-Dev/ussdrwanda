@@ -21,6 +21,7 @@ public class InkomokoProperties {
     private Repayment repayment = new Repayment();
     private Fineract fineract = new Fineract();
     private Payment payment = new Payment();
+    private Omnichannel omnichannel = new Omnichannel();
     private Sms sms = new Sms();
     private Mail mail = new Mail();
     private Demo demo = new Demo();
@@ -55,7 +56,10 @@ public class InkomokoProperties {
 
     @Getter @Setter
     public static class Fineract {
-        /** demo (default, pilot on *662*105#) | live (Fineract, *311#). "mock" is treated as demo. */
+        /**
+         * demo (default, pilot on *662*105#) | live (Fineract, *311#) | omnichannel (Inkomoko Omnichannel API).
+         * "mock" is treated as demo.
+         */
         private String mode = "demo";
         private String baseUrl;
         private String tenantId = "default";
@@ -77,6 +81,17 @@ public class InkomokoProperties {
         private int connectTimeoutMs = 3000;
         private int readTimeoutMs = 10000;
         private int mockDelaySeconds = 5;
+    }
+
+    /** Inkomoko Omnichannel API (HMAC-signed). Used when fineract.mode or payment.mode is "omnichannel". */
+    @Getter @Setter
+    public static class Omnichannel {
+        private String baseUrl = "http://dev.inkomoko.com:1134/api/v1";
+        private String apiKey;
+        private String secret;
+        private String channel = "USSD";
+        private int connectTimeoutMs = 3000;
+        private int readTimeoutMs = 15000;
     }
 
     @Getter @Setter

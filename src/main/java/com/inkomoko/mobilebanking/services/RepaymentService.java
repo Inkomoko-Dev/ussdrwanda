@@ -80,6 +80,12 @@ public class RepaymentService {
         this.messages = messages;
     }
 
+    /** Omnichannel: the Payment Hub posts the repayment to the loan and texts the customer. */
+    private boolean hubPosts() {
+        String mode = props.getPayment().getMode();
+        return mode != null && "omnichannel".equalsIgnoreCase(mode.trim());
+    }
+
     // ══════════════════════════════════════════════════════════════════════
     //  1. Initiation (from USSD confirm screen)
     // ══════════════════════════════════════════════════════════════════════
@@ -187,7 +193,9 @@ public class RepaymentService {
 
         switch (outcome) {
             case PAID -> postToFineract(reference);
-            case FAILED -> repo.findByReference(reference).ifPresent(this::sendFailureSms);
+            case FAILED -> {
+                if (!hubPosts()) repo.findByReference(reference).ifPresent(this::sendFailureSms);
+            }
             default -> { }
         }
         return outcome.name();
@@ -207,6 +215,18 @@ public class RepaymentService {
             }
             t.setPostingAttempts(t.getPostingAttempts() + 1);
             LocalDateTime now = DateUtility.nowKigali();
+            if (hubPosts()) {
+                t.setStatus(ETransactionStatus.POSTED);
+                t.setPostedAt(now);
+                t.setFailureReason(null);
+                try {
+                    t.setBalanceAfter(fineract.getLoanDetails(t.getLoanId()).totalOutstanding());
+                } catch (Exception e) {
+                    log.warn("Balance refresh after payment failed ref={}: {}", reference, e.getMessage());
+                }
+                t.setUpdatedAt(now);
+                return repo.save(t);
+            }
             try {
                 String txnId = fineract.findRepaymentByExternalId(t.getLoanId(), t.getReference())
                         .orElseGet(() -> fineract.postRepayment(t.getLoanId(), t.getAmount(),
@@ -237,7 +257,7 @@ public class RepaymentService {
         boolean posted = result.getStatus() == ETransactionStatus.POSTED;
         audit.system(posted ? "REPAYMENT_POSTED" : "REPAYMENT_POSTING_FAILED", reference, posted,
                 posted ? "fineractTxnId=" + result.getFineractTxnId() : result.getFailureReason());
-        if (posted) sendReceiptSms(result);
+        if (posted && !hubPosts()) sendReceiptSms(result);
         return posted;
     }
 
@@ -350,6 +370,9 @@ public class RepaymentService {
      * If the refund is refused, the row stays in review with the loan already reversed.
      */
     public RepaymentTransaction reversePosted(String reference, String by) {
+        if (hubPosts()) {
+            throw new IllegalStateException("Reversals of Omnichannel payments are handled by Inkomoko in Omnichannel");
+        }
         RepaymentTransaction t = require(reference);
         if (t.getStatus() != ETransactionStatus.POSTED) {
             throw new IllegalStateException("Only a posted repayment can be reversed");

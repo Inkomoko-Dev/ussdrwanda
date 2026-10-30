@@ -179,6 +179,9 @@ deploy:
       [ "${FINERACT_MODE_STAGING:-demo}" = "live" ] && require FINERACT_BASE_URL_STAGING FINERACT_USERNAME_STAGING FINERACT_PASSWORD_STAGING
       [ "${PAYMENT_MODE_STAGING:-mock}" = "live" ] && require PAYMENT_BASE_URL_STAGING PAYMENT_API_KEY_STAGING PAYMENT_CALLBACK_URL_STAGING PAYMENT_CALLBACK_TOKEN_STAGING
       [ "${SMS_MODE_STAGING:-mock}" = "live" ] && require SMS_BASE_URL_STAGING SMS_API_KEY_STAGING
+      if [ "${FINERACT_MODE_STAGING:-demo}" = "omnichannel" ] || [ "${PAYMENT_MODE_STAGING:-mock}" = "omnichannel" ]; then
+        require OMNICHANNEL_API_KEY_STAGING OMNICHANNEL_SECRET_STAGING
+      fi
       true
     - docker container prune -f --filter "until=24h" || true
     - *docker_login

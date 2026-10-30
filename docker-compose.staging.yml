@@ -38,6 +38,17 @@ services:
       - PAYMENT_MERCHANT_CODE=${PAYMENT_MERCHANT_CODE_STAGING:-INKOMOKO}
       - PAYMENT_CALLBACK_URL=${PAYMENT_CALLBACK_URL_STAGING:-https://ussd.inkomoko.example/api/payments/callback}
       - PAYMENT_CALLBACK_TOKEN=${PAYMENT_CALLBACK_TOKEN_STAGING:-CHANGE_ME_CALLBACK_TOKEN}
+      # Inkomoko Omnichannel API: set FINERACT_MODE_STAGING and PAYMENT_MODE_STAGING to "omnichannel"
+      - OMNICHANNEL_BASE_URL=${OMNICHANNEL_BASE_URL_STAGING:-http://dev.inkomoko.com:1134/api/v1}
+      - OMNICHANNEL_API_KEY=${OMNICHANNEL_API_KEY_STAGING:-}
+      - OMNICHANNEL_SECRET=${OMNICHANNEL_SECRET_STAGING:-}
+      # Portal e-mail (default-password delivery): mock logs only, smtp sends
+      - MAIL_MODE=${MAIL_MODE_STAGING:-mock}
+      - MAIL_FROM=${MAIL_FROM_STAGING:-noreply@inkomoko.example}
+      - MAIL_HOST=${MAIL_HOST_STAGING:-}
+      - MAIL_PORT=${MAIL_PORT_STAGING:-587}
+      - MAIL_USERNAME=${MAIL_USERNAME_STAGING:-}
+      - MAIL_PASSWORD=${MAIL_PASSWORD_STAGING:-}
       # SMS
       - SMS_MODE=${SMS_MODE_STAGING:-mock}
       - SMS_BASE_URL=${SMS_BASE_URL_STAGING:-https://sms.efashe.example/api/v1}
