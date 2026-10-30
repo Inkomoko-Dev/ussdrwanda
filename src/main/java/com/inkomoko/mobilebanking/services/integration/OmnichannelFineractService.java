@@ -54,15 +54,13 @@ public class OmnichannelFineractService implements FineractService {
             }
             throw e;
         }
-        boolean active = !Boolean.FALSE.equals(v.get("valid"))
-                && "ACTIVE".equalsIgnoreCase(str(v.get("accountStatus")))
-                && !Boolean.FALSE.equals(v.get("ussdEnabled"));
         String name = firstNonBlank(str(profile.get("displayName")), str(v.get("customerName")));
         Long customerId = customerId(profile);
-        log.info("CBS result msisdn={} -> customerId={} accountNo={} profileStatus={} eligible={} usable={}",
-                msisdn, customerId, profile.get("accountNo"), profile.get("accountStatus"), profile.get("eligible"), active);
+        log.info("CBS result msisdn={} -> REGISTERED customerId={} accountNo={} profileStatus={} eligible={}",
+                msisdn, customerId, profile.get("accountNo"), profile.get("accountStatus"), profile.get("eligible"));
+        // registered=true alone qualifies the customer: they accept the terms, then create a PIN in our database.
         return Optional.of(new ClientDto(customerId, name,
-                firstNonBlank(str(profile.get("phoneNumber")), msisdn), str(profile.get("email")), active));
+                firstNonBlank(str(profile.get("phoneNumber")), msisdn), str(profile.get("email")), true));
     }
 
     @Override

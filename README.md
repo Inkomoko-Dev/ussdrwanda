@@ -15,7 +15,7 @@ This is a React app in `frontend/`, served by Spring Boot at **`/portal/`**. The
   * Search the USSD customers.
   * **Onboard** a client: look them up in core banking by phone, see their loans, confirm their ID was verified, and send an SMS invitation.
   * Reset or unlock a PIN, and disable or enable access.
-  * **Registration is staff-only.** A client can use USSD only after staff onboard them; there is no self-registration on first dial. After onboarding, the client creates their own PIN on their first dial. Unknown or un-onboarded numbers are told to visit an Inkomoko office.
+  * **Registration follows core banking.** Any number that Omnichannel reports as `registered: true` can use USSD: on the first dial the customer picks a language, accepts the terms and creates a PIN, which is stored in this app's database. Numbers that are not registered are told to contact Inkomoko. Staff onboarding in the portal is optional (for example, to send an SMS invitation).
 * **Other pages:**
   * dashboard (sessions, completion and abandonment rates, response time, PIN failures, repayments by status)
   * repayments with reconciliation proposals (maker)
@@ -89,7 +89,7 @@ All customer, loan and repayment data comes from core banking. There is no demo 
 | `FINERACT_MODE` | clients, loans, balances, next due date and mini statement from the Inkomoko Omnichannel API | Fineract REST API directly (`FINERACT_*`) |
 | `PAYMENT_MODE` | Mobile Money prompt through Omnichannel `/ussd/payment/initiate`; the Payment Hub posts to the loan and Omnichannel texts the customer | Efashe merchant API (`PAYMENT_*`) |
 
-Omnichannel requests are signed with HMAC-SHA256 (`OMNICHANNEL_BASE_URL`, `OMNICHANNEL_API_KEY`, `OMNICHANNEL_SECRET`). PINs, staff onboarding and lockout stay in this app's database. A number can use USSD only when Omnichannel reports it registered, `ACTIVE` and `ussdEnabled`, and staff have onboarded it. To test with a real customer, onboard their number in the portal; to let a tester start over with a new PIN, use `POST /api/admin/pins/{msisdn}/reset`.
+Omnichannel requests are signed with HMAC-SHA256 (`OMNICHANNEL_BASE_URL`, `OMNICHANNEL_API_KEY`, `OMNICHANNEL_SECRET`). PINs and lockout stay in this app's database. A number can use USSD when `/ussd/phone/validate` returns `registered: true`; the customer then accepts the terms and creates a PIN. To let a tester start over with a new PIN, use `POST /api/admin/pins/{msisdn}/reset`.
 
 **Environments.** Staging (`master`, `*662*105#`) uses the Omnichannel staging API. Production (`main`, `*311#`) also defaults to `omnichannel`, with the production URL, key and secret set in GitLab; the `deploy-prod` job requires the credentials of whichever mode is selected.
 
