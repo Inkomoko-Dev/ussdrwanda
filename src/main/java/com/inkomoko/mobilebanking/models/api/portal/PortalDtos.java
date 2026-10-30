@@ -34,7 +34,7 @@ public final class PortalDtos {
 
     /** countrySetupRequired: no active country yet — a Super Administrator must choose and configure one. */
     public record MeResponse(UserView user, List<EPrivilege> privileges, boolean mustChangePassword,
-                             boolean passwordExpired, boolean demoMode, String ussdServiceCode,
+                             boolean passwordExpired, String ussdServiceCode,
                              CountrySummary country, boolean countrySetupRequired, PasswordPolicyView passwordPolicy) {
     }
 

@@ -1,6 +1,5 @@
 package com.inkomoko.mobilebanking.services.admin;
 
-import com.inkomoko.mobilebanking.config.DemoMode;
 import com.inkomoko.mobilebanking.config.InkomokoProperties;
 import com.inkomoko.mobilebanking.enums.EAdminUserStatus;
 import com.inkomoko.mobilebanking.enums.EPrivilege;
@@ -98,8 +97,7 @@ public class AdminUserService {
                 : u.getRole().effectivePrivileges().stream().sorted().toList();
         CountrySummary country = countryService.active()
                 .map(c -> new CountrySummary(c.getCode(), c.getName(), c.getCurrency())).orElse(null);
-        boolean demo = DemoMode.isDemo(props.getFineract().getMode());
-        return new MeResponse(view(u), privileges, u.isMustChangePassword(), policy.isExpired(u), demo,
+        return new MeResponse(view(u), privileges, u.isMustChangePassword(), policy.isExpired(u),
                 countryService.serviceCode(), country, country == null, policy.view());
     }
 

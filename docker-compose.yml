@@ -15,8 +15,6 @@ services:
     environment:
       SERVER_PORT: "9094"
       TZ: Africa/Kigali
-      FINERACT_MODE: demo
-      PAYMENT_MODE: mock
       SMS_MODE: mock
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://127.0.0.1:9094/actuator/health || exit 1"]

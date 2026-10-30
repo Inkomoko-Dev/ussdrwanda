@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api, qs } from '../api';
 import { useAuth } from '../auth';
 import { Alert, Card, Field, Modal, PageHead, Pager, StatusBadge, fmtDate, fmtMoney, useLoad } from '../components/ui';
@@ -91,7 +90,7 @@ export default function Customers() {
           onDone={(_c, message) => { setEditing(null); setNotice(message); reload(); }} />
       )}
       {onboarding && (
-        <OnboardModal demoMode={!!me?.demoMode} currency={me?.country?.currency ?? ''}
+        <OnboardModal currency={me?.country?.currency ?? ''}
           onClose={() => setOnboarding(false)}
           onDone={(c) => { setOnboarding(false); setNotice(`${c.clientName ?? c.msisdn} onboarded — they can now dial and create a PIN.`); reload(); }} />
       )}
@@ -175,8 +174,8 @@ function DetailsModal({ customer, canEdit, onClose, onDone }: {
 }
 
 
-function OnboardModal({ onClose, onDone, demoMode, currency }: {
-  onClose: () => void; onDone: (c: Customer) => void; demoMode: boolean; currency: string;
+function OnboardModal({ onClose, onDone, currency }: {
+  onClose: () => void; onDone: (c: Customer) => void; currency: string;
 }) {
   const [msisdn, setMsisdn] = useState('');
   const [lookup, setLookup] = useState<CustomerLookup | null>(null);
@@ -227,7 +226,6 @@ function OnboardModal({ onClose, onDone, demoMode, currency }: {
       {lookup && !lookup.foundInCoreBanking && (
         <Alert kind="info">
           No core-banking client uses {lookup.msisdn}.
-          {demoMode && <> In demo mode, add the number under <Link to="/demo-data" onClick={onClose}>Demo core banking</Link> first.</>}
         </Alert>
       )}
 

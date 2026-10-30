@@ -14,8 +14,6 @@ public enum EPrivilege {
     CUSTOMER_PIN_RESET("Customers", "Reset a customer's PIN"),
     CUSTOMER_PIN_UNLOCK("Customers", "Unlock a customer's PIN"),
     CUSTOMER_DISABLE("Customers", "Disable / enable a customer's USSD access"),
-    DEMO_DATA_MANAGE("Customers", "Manage demo core-banking data (pilot only)"),
-
     REPAYMENT_VIEW("Repayments", "View repayments"),
     RECON_PROPOSE("Repayments", "Propose a reconciliation action (maker)"),
     RECON_APPROVE("Repayments", "Approve or reject reconciliation actions (checker)"),

@@ -5,8 +5,6 @@ import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * All platform settings under the {@code inkomoko.*} prefix (see application.properties).
@@ -24,7 +22,6 @@ public class InkomokoProperties {
     private Omnichannel omnichannel = new Omnichannel();
     private Sms sms = new Sms();
     private Mail mail = new Mail();
-    private Demo demo = new Demo();
     private Security security = new Security();
 
     @Getter @Setter
@@ -56,11 +53,8 @@ public class InkomokoProperties {
 
     @Getter @Setter
     public static class Fineract {
-        /**
-         * demo (default, pilot on *662*105#) | live (Fineract, *311#) | omnichannel (Inkomoko Omnichannel API).
-         * "mock" is treated as demo.
-         */
-        private String mode = "demo";
+        /** omnichannel (default, Inkomoko Omnichannel API) | live (Fineract REST API directly). */
+        private String mode = "omnichannel";
         private String baseUrl;
         private String tenantId = "default";
         private String username;
@@ -72,7 +66,8 @@ public class InkomokoProperties {
 
     @Getter @Setter
     public static class Payment {
-        private String mode = "mock";
+        /** omnichannel (default, Omnichannel Payment Hub) | live (Efashe merchant API). */
+        private String mode = "omnichannel";
         private String baseUrl;
         private String apiKey;
         private String merchantCode;
@@ -80,10 +75,9 @@ public class InkomokoProperties {
         private String callbackToken;
         private int connectTimeoutMs = 3000;
         private int readTimeoutMs = 10000;
-        private int mockDelaySeconds = 5;
     }
 
-    /** Inkomoko Omnichannel API (HMAC-signed). Used when fineract.mode or payment.mode is "omnichannel". */
+    /** Inkomoko Omnichannel API (HMAC-signed). Used when fineract.mode or payment.mode is "omnichannel" (the default). */
     @Getter @Setter
     public static class Omnichannel {
         private String baseUrl = "http://dev.inkomoko.com:1134/api/v1";
@@ -123,13 +117,6 @@ public class InkomokoProperties {
         private String bootstrapAdminEmail = "admin@yopmail.com";
         private String bootstrapAdminPassword;
         private String bootstrapAdminName = "System Administrator";
-    }
-
-    /** Demo core banking (only used when fineract.mode is not live). */
-    @Getter @Setter
-    public static class Demo {
-        /** Phone numbers registered as demo clients (with sample loans) at startup. */
-        private List<String> allowedMsisdns = new ArrayList<>();
     }
 
 }

@@ -1,6 +1,7 @@
 # Staging: host PostgreSQL on :5432 (network_mode: host). No DB container here.
 # GitLab CI/CD variables use the _STAGING suffix; defaults mirror application.properties
-# (external integrations default to mock mode on staging).
+# (core banking and payments use the Omnichannel API; SMS is live when SMS_API_KEY_STAGING is set;
+# e-mail defaults to mock).
 services:
   inkomoko-ussd:
     image: registry.gitlab.com/efashe2/efashe-wallet/inkomoko-ussd:${IMAGE_TAG:-latest}
@@ -21,27 +22,25 @@ services:
       - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD_STAGING:-postgres}
       # Support
       - SUPPORT_HELPLINE=${SUPPORT_HELPLINE_STAGING:-+250 XXX XXX XXX}
-      # Fineract
-      - FINERACT_MODE=${FINERACT_MODE_STAGING:-demo}
-      # Demo mode: phones registered as demo clients at startup (comma-separated);
-      # add more at runtime with POST /api/admin/demo/clients
-      - DEMO_ALLOWED_MSISDNS=${DEMO_ALLOWED_MSISDNS_STAGING:-250788683008,250785642275}
-      - FINERACT_BASE_URL=${FINERACT_BASE_URL_STAGING:-https://fineract-sandbox.example/fineract-provider/api/v1}
-      - FINERACT_TENANT_ID=${FINERACT_TENANT_ID_STAGING:-default}
-      - FINERACT_USERNAME=${FINERACT_USERNAME_STAGING:-mifos}
-      - FINERACT_PASSWORD=${FINERACT_PASSWORD_STAGING:-password}
-      - FINERACT_PAYMENT_TYPE_ID=${FINERACT_PAYMENT_TYPE_ID_STAGING:-1}
-      # Payment gateway (MoMo / Airtel Money)
-      - PAYMENT_MODE=${PAYMENT_MODE_STAGING:-mock}
-      - PAYMENT_BASE_URL=${PAYMENT_BASE_URL_STAGING:-https://payments.efashe.example/api/v1}
-      - PAYMENT_API_KEY=${PAYMENT_API_KEY_STAGING:-CHANGE_ME}
-      - PAYMENT_MERCHANT_CODE=${PAYMENT_MERCHANT_CODE_STAGING:-INKOMOKO}
-      - PAYMENT_CALLBACK_URL=${PAYMENT_CALLBACK_URL_STAGING:-https://ussd.inkomoko.example/api/payments/callback}
-      - PAYMENT_CALLBACK_TOKEN=${PAYMENT_CALLBACK_TOKEN_STAGING:-CHANGE_ME_CALLBACK_TOKEN}
-      # Inkomoko Omnichannel API: set FINERACT_MODE_STAGING and PAYMENT_MODE_STAGING to "omnichannel"
+      # Core banking (clients, loans) and MoMo repayments: omnichannel (default) or live
+      - FINERACT_MODE=${FINERACT_MODE_STAGING:-omnichannel}
+      - PAYMENT_MODE=${PAYMENT_MODE_STAGING:-omnichannel}
+      # Inkomoko Omnichannel API (staging)
       - OMNICHANNEL_BASE_URL=${OMNICHANNEL_BASE_URL_STAGING:-http://dev.inkomoko.com:1134/api/v1}
-      - OMNICHANNEL_API_KEY=${OMNICHANNEL_API_KEY_STAGING:-}
+      - OMNICHANNEL_API_KEY=${OMNICHANNEL_API_KEY_STAGING:-fdi}
       - OMNICHANNEL_SECRET=${OMNICHANNEL_SECRET_STAGING:-}
+      # Only read when FINERACT_MODE_STAGING=live (Fineract directly, bypassing Omnichannel)
+      - FINERACT_BASE_URL=${FINERACT_BASE_URL_STAGING:-}
+      - FINERACT_TENANT_ID=${FINERACT_TENANT_ID_STAGING:-default}
+      - FINERACT_USERNAME=${FINERACT_USERNAME_STAGING:-}
+      - FINERACT_PASSWORD=${FINERACT_PASSWORD_STAGING:-}
+      - FINERACT_PAYMENT_TYPE_ID=${FINERACT_PAYMENT_TYPE_ID_STAGING:-1}
+      # Only read when PAYMENT_MODE_STAGING=live (Efashe merchant API)
+      - PAYMENT_BASE_URL=${PAYMENT_BASE_URL_STAGING:-}
+      - PAYMENT_API_KEY=${PAYMENT_API_KEY_STAGING:-}
+      - PAYMENT_MERCHANT_CODE=${PAYMENT_MERCHANT_CODE_STAGING:-INKOMOKO}
+      - PAYMENT_CALLBACK_URL=${PAYMENT_CALLBACK_URL_STAGING:-}
+      - PAYMENT_CALLBACK_TOKEN=${PAYMENT_CALLBACK_TOKEN_STAGING:-}
       # Portal e-mail (default-password delivery): mock logs only, smtp sends
       - MAIL_MODE=${MAIL_MODE_STAGING:-mock}
       - MAIL_FROM=${MAIL_FROM_STAGING:-noreply@inkomoko.example}
@@ -49,10 +48,10 @@ services:
       - MAIL_PORT=${MAIL_PORT_STAGING:-587}
       - MAIL_USERNAME=${MAIL_USERNAME_STAGING:-}
       - MAIL_PASSWORD=${MAIL_PASSWORD_STAGING:-}
-      # SMS
+      # SMS: the deploy job sets SMS_MODE_STAGING=live when SMS_API_KEY_STAGING is provided
       - SMS_MODE=${SMS_MODE_STAGING:-mock}
-      - SMS_BASE_URL=${SMS_BASE_URL_STAGING:-https://sms.efashe.example/api/v1}
-      - SMS_API_KEY=${SMS_API_KEY_STAGING:-CHANGE_ME}
+      - SMS_BASE_URL=${SMS_BASE_URL_STAGING:-}
+      - SMS_API_KEY=${SMS_API_KEY_STAGING:-}
       - SMS_SENDER_ID=${SMS_SENDER_ID_STAGING:-INKOMOKO}
       # Admin portal login tokens (JWT) - at least 32 characters
       - JWT_SECRET=${JWT_SECRET_STAGING:-staging-jwt-secret-change-me-please-0123456789}

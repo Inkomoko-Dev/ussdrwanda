@@ -20,25 +20,37 @@ services:
       - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
       # Support
       - SUPPORT_HELPLINE=${SUPPORT_HELPLINE:-+250 XXX XXX XXX}
-      # Fineract
-      - FINERACT_MODE=${FINERACT_MODE:-live}
+      # Core banking (clients, loans) and MoMo repayments: omnichannel (default) or live
+      - FINERACT_MODE=${FINERACT_MODE:-omnichannel}
+      - PAYMENT_MODE=${PAYMENT_MODE:-omnichannel}
+      # Inkomoko Omnichannel API (production URL, key and secret from GitLab)
+      - OMNICHANNEL_BASE_URL=${OMNICHANNEL_BASE_URL:-}
+      - OMNICHANNEL_API_KEY=${OMNICHANNEL_API_KEY:-}
+      - OMNICHANNEL_SECRET=${OMNICHANNEL_SECRET:-}
+      # Only read when FINERACT_MODE=live (Fineract directly, bypassing Omnichannel)
       - FINERACT_BASE_URL=${FINERACT_BASE_URL:-}
       - FINERACT_TENANT_ID=${FINERACT_TENANT_ID:-default}
       - FINERACT_USERNAME=${FINERACT_USERNAME:-}
       - FINERACT_PASSWORD=${FINERACT_PASSWORD:-}
       - FINERACT_PAYMENT_TYPE_ID=${FINERACT_PAYMENT_TYPE_ID:-1}
-      # Payment gateway (MoMo / Airtel Money)
-      - PAYMENT_MODE=${PAYMENT_MODE:-live}
+      # Only read when PAYMENT_MODE=live (Efashe merchant API)
       - PAYMENT_BASE_URL=${PAYMENT_BASE_URL:-}
       - PAYMENT_API_KEY=${PAYMENT_API_KEY:-}
       - PAYMENT_MERCHANT_CODE=${PAYMENT_MERCHANT_CODE:-INKOMOKO}
       - PAYMENT_CALLBACK_URL=${PAYMENT_CALLBACK_URL:-}
-      - PAYMENT_CALLBACK_TOKEN=${PAYMENT_CALLBACK_TOKEN}
+      - PAYMENT_CALLBACK_TOKEN=${PAYMENT_CALLBACK_TOKEN:-}
       # SMS
       - SMS_MODE=${SMS_MODE:-live}
       - SMS_BASE_URL=${SMS_BASE_URL:-}
       - SMS_API_KEY=${SMS_API_KEY:-}
       - SMS_SENDER_ID=${SMS_SENDER_ID:-INKOMOKO}
+      # Portal e-mail (default-password delivery)
+      - MAIL_MODE=${MAIL_MODE:-mock}
+      - MAIL_FROM=${MAIL_FROM:-noreply@inkomoko.example}
+      - MAIL_HOST=${MAIL_HOST:-}
+      - MAIL_PORT=${MAIL_PORT:-587}
+      - MAIL_USERNAME=${MAIL_USERNAME:-}
+      - MAIL_PASSWORD=${MAIL_PASSWORD:-}
       # Admin portal login tokens (JWT) - at least 32 characters
       - JWT_SECRET=${JWT_SECRET}
       # Portal Super Administrator seeded on the first start of a new database (password change forced at first sign-in)

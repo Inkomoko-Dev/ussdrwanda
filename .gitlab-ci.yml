@@ -171,17 +171,27 @@ deploy:
     - export DB_USERNAME_STAGING="${DB_USERNAME_STAGING:-postgres}"
     - export DB_PASSWORD_STAGING="${DB_PASSWORD_STAGING:-postgres}"
     - echo "DB=localhost:5432/${DB_NAME_STAGING} user=${DB_USERNAME_STAGING} password=***"
+    # SMS goes live as soon as SMS_API_KEY_STAGING is set (unless SMS_MODE_STAGING says otherwise).
     - |
-      # Integrations default to mock on staging; when switched to live, require credentials.
+      if [ -z "${SMS_MODE_STAGING:-}" ]; then
+        if [ -n "${SMS_API_KEY_STAGING:-}" ]; then export SMS_MODE_STAGING=live; else export SMS_MODE_STAGING=mock; fi
+      fi
+    - |
+      # Core banking and payments come from Omnichannel by default (no demo/mock data).
+      # FINERACT_* / PAYMENT_* (Efashe) variables are only needed when the matching mode is "live".
       set -e
       require() { for v in "$@"; do eval "val=\${$v:-}"; if [ -z "$val" ]; then echo "ERROR: $v is not set (GitLab CI/CD variables)"; exit 1; fi; done; }
-      echo "FINERACT_MODE=${FINERACT_MODE_STAGING:-demo} PAYMENT_MODE=${PAYMENT_MODE_STAGING:-mock} SMS_MODE=${SMS_MODE_STAGING:-mock}"
-      [ "${FINERACT_MODE_STAGING:-demo}" = "live" ] && require FINERACT_BASE_URL_STAGING FINERACT_USERNAME_STAGING FINERACT_PASSWORD_STAGING
-      [ "${PAYMENT_MODE_STAGING:-mock}" = "live" ] && require PAYMENT_BASE_URL_STAGING PAYMENT_API_KEY_STAGING PAYMENT_CALLBACK_URL_STAGING PAYMENT_CALLBACK_TOKEN_STAGING
-      [ "${SMS_MODE_STAGING:-mock}" = "live" ] && require SMS_BASE_URL_STAGING SMS_API_KEY_STAGING
-      if [ "${FINERACT_MODE_STAGING:-demo}" = "omnichannel" ] || [ "${PAYMENT_MODE_STAGING:-mock}" = "omnichannel" ]; then
-        require OMNICHANNEL_API_KEY_STAGING OMNICHANNEL_SECRET_STAGING
-      fi
+      FM="${FINERACT_MODE_STAGING:-omnichannel}"; PM="${PAYMENT_MODE_STAGING:-omnichannel}"; SM="${SMS_MODE_STAGING}"
+      echo "FINERACT_MODE=$FM PAYMENT_MODE=$PM SMS_MODE=$SM"
+      for pair in "FINERACT_MODE_STAGING:$FM" "PAYMENT_MODE_STAGING:$PM"; do
+        case "${pair#*:}" in omnichannel|live) ;; *) echo "ERROR: ${pair%%:*}=${pair#*:}; use omnichannel or live"; exit 1 ;; esac
+      done
+      case "$SM" in mock|live) ;; *) echo "ERROR: SMS_MODE_STAGING=$SM; use live or mock"; exit 1 ;; esac
+      if [ "$FM" = "omnichannel" ] || [ "$PM" = "omnichannel" ]; then require OMNICHANNEL_SECRET_STAGING; fi
+      [ "$FM" = "live" ] && require FINERACT_BASE_URL_STAGING FINERACT_USERNAME_STAGING FINERACT_PASSWORD_STAGING
+      [ "$PM" = "live" ] && require PAYMENT_BASE_URL_STAGING PAYMENT_API_KEY_STAGING PAYMENT_CALLBACK_URL_STAGING PAYMENT_CALLBACK_TOKEN_STAGING
+      [ "$SM" = "live" ] && require SMS_BASE_URL_STAGING SMS_API_KEY_STAGING
+      [ "${MAIL_MODE_STAGING:-mock}" = "smtp" ] && require MAIL_HOST_STAGING
       true
     - docker container prune -f --filter "until=24h" || true
     - *docker_login
@@ -246,21 +256,24 @@ deploy-prod:
     - |
       set -e
       require() { for v in "$@"; do eval "val=\${$v:-}"; if [ -z "$val" ]; then echo "ERROR: $v is not set (GitLab CI/CD variables)"; exit 1; fi; done; }
-      require DB_USERNAME DB_PASSWORD PAYMENT_CALLBACK_TOKEN JWT_SECRET
-      # Production is live-only: demo core banking / mock payments are refused unless explicitly allowed.
-      if [ "${ALLOW_DEMO_IN_PRODUCTION:-false}" != "true" ]; then
-        for pair in "FINERACT_MODE:${FINERACT_MODE:-live}" "PAYMENT_MODE:${PAYMENT_MODE:-live}" "SMS_MODE:${SMS_MODE:-live}"; do
-          if [ "${pair#*:}" != "live" ]; then
-            echo "ERROR: ${pair%%:*}=${pair#*:} in production. Set it to live (or ALLOW_DEMO_IN_PRODUCTION=true to override)."
-            exit 1
-          fi
-        done
+      require DB_USERNAME DB_PASSWORD JWT_SECRET
+      # Core banking and payments must be real: omnichannel (default) or live; there is no demo/mock mode.
+      # FINERACT_* / PAYMENT_* (Efashe) variables are only needed when the matching mode is "live".
+      FM="${FINERACT_MODE:-omnichannel}"; PM="${PAYMENT_MODE:-omnichannel}"; SM="${SMS_MODE:-live}"
+      for pair in "FINERACT_MODE:$FM" "PAYMENT_MODE:$PM"; do
+        case "${pair#*:}" in omnichannel|live) ;; *) echo "ERROR: ${pair%%:*}=${pair#*:} in production; use omnichannel or live"; exit 1 ;; esac
+      done
+      if [ "$SM" != "live" ] && [ "${ALLOW_MOCK_SMS_IN_PRODUCTION:-false}" != "true" ]; then
+        echo "ERROR: SMS_MODE=$SM in production. Set it to live (or ALLOW_MOCK_SMS_IN_PRODUCTION=true to override)."
+        exit 1
       fi
       echo "USSD_SERVICE_CODE=${USSD_SERVICE_CODE:-311}"
-      echo "FINERACT_MODE=${FINERACT_MODE:-live} PAYMENT_MODE=${PAYMENT_MODE:-live} SMS_MODE=${SMS_MODE:-live}"
-      [ "${FINERACT_MODE:-live}" = "live" ] && require FINERACT_BASE_URL FINERACT_USERNAME FINERACT_PASSWORD
-      [ "${PAYMENT_MODE:-live}" = "live" ] && require PAYMENT_BASE_URL PAYMENT_API_KEY PAYMENT_CALLBACK_URL
-      [ "${SMS_MODE:-live}" = "live" ] && require SMS_BASE_URL SMS_API_KEY
+      echo "FINERACT_MODE=$FM PAYMENT_MODE=$PM SMS_MODE=$SM"
+      if [ "$FM" = "omnichannel" ] || [ "$PM" = "omnichannel" ]; then require OMNICHANNEL_BASE_URL OMNICHANNEL_API_KEY OMNICHANNEL_SECRET; fi
+      [ "$FM" = "live" ] && require FINERACT_BASE_URL FINERACT_USERNAME FINERACT_PASSWORD
+      [ "$PM" = "live" ] && require PAYMENT_BASE_URL PAYMENT_API_KEY PAYMENT_CALLBACK_URL PAYMENT_CALLBACK_TOKEN
+      [ "$SM" = "live" ] && require SMS_BASE_URL SMS_API_KEY
+      [ "${MAIL_MODE:-mock}" = "smtp" ] && require MAIL_HOST
       true
     - echo "DB=${DB_HOST}:${DB_PORT}/${DB_NAME} user=${DB_USERNAME} password=***"
     - docker container prune -f --filter "until=24h" || true

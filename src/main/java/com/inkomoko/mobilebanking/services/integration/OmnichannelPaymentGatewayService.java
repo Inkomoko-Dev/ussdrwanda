@@ -22,7 +22,7 @@ import java.util.Map;
  */
 @Slf4j
 @Service
-@ConditionalOnProperty(name = "inkomoko.payment.mode", havingValue = "omnichannel")
+@ConditionalOnProperty(name = "inkomoko.payment.mode", havingValue = "omnichannel", matchIfMissing = true)
 public class OmnichannelPaymentGatewayService implements PaymentGatewayService {
 
     private final OmnichannelClient api;

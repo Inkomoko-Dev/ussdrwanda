@@ -26,7 +26,7 @@ import java.util.Optional;
  */
 @Slf4j
 @Service
-@ConditionalOnProperty(name = "inkomoko.fineract.mode", havingValue = "omnichannel")
+@ConditionalOnProperty(name = "inkomoko.fineract.mode", havingValue = "omnichannel", matchIfMissing = true)
 public class OmnichannelFineractService implements FineractService {
 
     private final OmnichannelClient api;
