@@ -3,16 +3,13 @@ import { useAuth } from '../auth';
 import type { Privilege } from '../types';
 import { BrandBar, Logo } from './ui';
 
-interface NavItem { to: string; label: string; any: Privilege[]; demoOnly?: boolean }
+interface NavItem { to: string; label: string; any: Privilege[] }
 
 const SECTIONS: { title: string; items: NavItem[] }[] = [
   { title: 'Overview', items: [{ to: '/dashboard', label: 'Dashboard', any: ['DASHBOARD_VIEW'] }] },
   {
     title: 'Customers',
-    items: [
-      { to: '/customers', label: 'Customers', any: ['CUSTOMER_VIEW', 'CUSTOMER_ONBOARD'] },
-      { to: '/demo-data', label: 'Demo core banking', any: ['DEMO_DATA_MANAGE'], demoOnly: true },
-    ],
+    items: [{ to: '/customers', label: 'Customers', any: ['CUSTOMER_VIEW', 'CUSTOMER_ONBOARD'] }],
   },
   {
     title: 'Repayments',
@@ -41,8 +38,8 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
   },
 ];
 
-export function visibleNav(can: (...p: Privilege[]) => boolean, demoMode: boolean): NavItem[] {
-  return SECTIONS.flatMap((s) => s.items).filter((i) => can(...i.any) && (!i.demoOnly || demoMode));
+export function visibleNav(can: (...p: Privilege[]) => boolean): NavItem[] {
+  return SECTIONS.flatMap((s) => s.items).filter((i) => can(...i.any));
 }
 
 export default function Layout() {
@@ -58,7 +55,7 @@ export default function Layout() {
         </div>
         <nav className="nav" aria-label="Main">
           {SECTIONS.map((section) => {
-            const items = section.items.filter((i) => can(...i.any) && (!i.demoOnly || me.demoMode));
+            const items = section.items.filter((i) => can(...i.any));
             if (!items.length) return null;
             return (
               <div key={section.title}>
@@ -78,7 +75,6 @@ export default function Layout() {
         <header className="topbar">
           {me.country && <span className="chip">{me.country.name} · *{me.ussdServiceCode}#</span>}
           {!me.country && <span className="chip demo">Country not configured</span>}
-          {me.demoMode && <span className="chip demo" title="Core banking is simulated (pilot)">Demo mode</span>}
           <span className="spacer" />
           <div className="user">
             <strong>{me.user.fullName}</strong>

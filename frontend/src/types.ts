@@ -1,6 +1,6 @@
 export type Privilege =
   | 'DASHBOARD_VIEW' | 'AUDIT_VIEW'
-  | 'CUSTOMER_VIEW' | 'CUSTOMER_ONBOARD' | 'CUSTOMER_PIN_RESET' | 'CUSTOMER_PIN_UNLOCK' | 'CUSTOMER_DISABLE' | 'DEMO_DATA_MANAGE'
+  | 'CUSTOMER_VIEW' | 'CUSTOMER_ONBOARD' | 'CUSTOMER_PIN_RESET' | 'CUSTOMER_PIN_UNLOCK' | 'CUSTOMER_DISABLE'
   | 'REPAYMENT_VIEW' | 'RECON_PROPOSE' | 'RECON_APPROVE'
   | 'FAQ_VIEW' | 'FAQ_MANAGE' | 'MESSAGE_VIEW' | 'MESSAGE_MANAGE'
   | 'USER_VIEW' | 'USER_MANAGE' | 'ROLE_VIEW' | 'ROLE_MANAGE'
@@ -32,7 +32,7 @@ export interface UserView {
 }
 
 export interface Me {
-  user: UserView; privileges: Privilege[]; mustChangePassword: boolean; passwordExpired: boolean; demoMode: boolean;
+  user: UserView; privileges: Privilege[]; mustChangePassword: boolean; passwordExpired: boolean;
   ussdServiceCode: string; country?: { code: string; name: string; currency: string }; countrySetupRequired: boolean;
   passwordPolicy: PasswordPolicy;
 }
@@ -88,12 +88,6 @@ export interface ReportSummary {
 
 export interface FaqItem { id: number; language: Language; title: string; body: string; displayOrder: number; active: boolean }
 export interface AuditLog { id: number; actor: string; channel: string; action: string; resource?: string; success: boolean; detail?: string; ipAddress?: string; ipCountry?: string; loggedAt: string }
-
-export interface DemoLoan {
-  id: number; clientId: number; accountNo: string; productName: string; status: string; principalOutstanding: number;
-  interestOutstanding: number; totalOverdue: number; installment: number; nextDueDate?: string; totalOutstanding: number;
-}
-export interface DemoClientView { client: { id: number; msisdn: string; displayName: string; active: boolean }; loans: DemoLoan[] }
 
 // ── USSD texts editor ──
 export interface MessageText {

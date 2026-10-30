@@ -11,8 +11,8 @@ import java.util.Optional;
 
 /**
  * Gateway to Inkomoko's core lending system (Apache Fineract). Balances are always read live —
- * nothing here is cached. Implementations: {@link FineractRestService} (live) and
- * {@link DemoFineractService} (pilot / demo, backed by the demo_* tables).
+ * nothing here is cached. Implementations: {@link OmnichannelFineractService} (default, through the
+ * Inkomoko Omnichannel API) and {@link FineractRestService} (Fineract REST API directly).
  */
 public interface FineractService {
 

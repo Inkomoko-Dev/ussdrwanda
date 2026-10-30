@@ -9,7 +9,6 @@ import Countries from './pages/Countries';
 import CountrySetup from './pages/CountrySetup';
 import Customers from './pages/Customers';
 import Dashboard from './pages/Dashboard';
-import DemoData from './pages/DemoData';
 import HelpContent from './pages/HelpContent';
 import Languages from './pages/Languages';
 import Login from './pages/Login';
@@ -27,7 +26,7 @@ export default function App() {
   if (me.mustChangePassword || me.passwordExpired) return <ForcedPasswordChange />;
   if (me.countrySetupRequired && can('COUNTRY_MANAGE')) return <CountrySetup />;
 
-  const home = visibleNav(can, me.demoMode)[0]?.to ?? '/account';
+  const home = visibleNav(can)[0]?.to ?? '/account';
   const guard = (ok: boolean, el: JSX.Element) => (ok ? el : <Navigate to={home} replace />);
 
   return (
@@ -37,7 +36,6 @@ export default function App() {
           <Route path="/" element={<Navigate to={home} replace />} />
           <Route path="/dashboard" element={guard(can('DASHBOARD_VIEW'), <Dashboard />)} />
           <Route path="/customers" element={guard(can('CUSTOMER_VIEW', 'CUSTOMER_ONBOARD'), <Customers />)} />
-          <Route path="/demo-data" element={guard(can('DEMO_DATA_MANAGE') && me.demoMode, <DemoData />)} />
           <Route path="/repayments" element={guard(can('REPAYMENT_VIEW'), <Repayments />)} />
           <Route path="/approvals" element={guard(can('RECON_APPROVE', 'RECON_PROPOSE'), <Approvals />)} />
           <Route path="/help-content" element={guard(can('FAQ_VIEW'), <HelpContent />)} />

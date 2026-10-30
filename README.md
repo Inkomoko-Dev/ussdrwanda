@@ -21,7 +21,6 @@ This is a React app in `frontend/`, served by Spring Boot at **`/portal/`**. The
   * repayments with reconciliation proposals (maker)
   * approvals (checker)
   * help and FAQ content
-  * demo core banking (pilot only)
   * users
   * countries
   * audit log
@@ -38,7 +37,7 @@ npm run build          # outputs to src/main/resources/static/portal (gitignored
 
 The app runs in Docker. PostgreSQL does not: use the Postgres already installed on your machine. The image builds the admin portal into the same process, so you do not run `npm` first. The first build compiles the portal and the Java app and takes several minutes. Later starts reuse that image.
 
-Core banking stays in **demo** mode, and payments and SMS stay in **mock** mode, so the simulator and portal work without Fineract or a payment gateway.
+Customer, loan and repayment data comes from the Inkomoko Omnichannel API (staging), so `.env` must contain `OMNICHANNEL_SECRET`. SMS stays in **mock** mode (messages are written to the log).
 
 1. Create the database (once), if it does not exist yet:
 
@@ -52,7 +51,7 @@ createdb -U postgres inkomoko_db
 cp .env.example .env
 ```
 
-`.env` uses `localhost:5432`. Compose runs the app on the host network, the same way staging does, so that address is the Postgres installed on the machine. The same file works for `./mvnw spring-boot:run`. Postgres can keep its default local-only setup.
+Fill in `OMNICHANNEL_SECRET` (ask the team; never commit it). `.env` uses `localhost:5432`. Compose runs the app on the host network, the same way staging does, so that address is the Postgres installed on the machine. The same file works for `./mvnw spring-boot:run`. Postgres can keep its default local-only setup.
 
 On Docker Desktop for Mac or Windows, turn on host networking once: **Settings → Resources → Network → Enable host networking**, then Apply & restart. Docker Engine on Linux already uses the host network.
 
@@ -74,76 +73,25 @@ Stop with `docker compose down`. That does not delete the database.
 
 ```bash
 createdb -U postgres inkomoko_db          # user/password: postgres/postgres (application.properties)
-./mvnw spring-boot:run                    # Flyway creates the schema on first start
+./mvnw spring-boot:run                    # Flyway creates the schema on first start; reads .env
 ```
 
 * USSD simulator: http://localhost:9094/simulator.html
 * Admin portal: http://localhost:9094/portal/ (run `npm run build` in `frontend/` first)
 * Swagger UI: http://localhost:9094/swagger-ui.html
 
-By default core banking runs in **demo** mode (`inkomoko.fineract.mode=demo`), and the payment gateway and SMS run in **mock** mode. The whole flow works without external systems:
+## Core banking and payments
 
-| Test phone     | Demo client (seeded by `V3__demo_core_banking.sql`)        |
-|----------------|-----------------------------------------------------------|
-| 250788000001   | 1 active loan (+1 settled); the first dial goes through PIN setup |
-| 250788000002   | 2 repayable loans (one in arrears) + 1 under review       |
-| 250722000003   | Airtel number, 1 approved loan pending disbursement       |
-| 250788000004   | inactive client                                           |
-| `DEMO_ALLOWED_MSISDNS` | registered at startup, each with an active loan and a loan in arrears |
-| any other      | not registered: the session ends right after the language screen |
+All customer, loan and repayment data comes from core banking. There is no demo or mock data, and the app refuses to start with `FINERACT_MODE` or `PAYMENT_MODE` set to anything other than the values below.
 
-A mock payment confirms automatically after 5 s. Amounts ending in **13** (e.g. 1013) fail, so you can test the failure path. SMS messages are written to the log. In demo mode, repayments reduce the demo loan balances exactly as a Fineract posting would.
-
-## Demo data API (pilot only)
-
-These endpoints are only available while `inkomoko.fineract.mode` is not `live`.
-
-```bash
-# get a token: POST /api/auth/login {"username":"...","password":"..."} -> data.token
-H='-H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json"'
-# allow a phone (adds an active loan + a loan in arrears unless "sampleLoans": false)
-curl -X POST $BASE/api/admin/demo/clients $H -d '{"msisdn":"250788683008","displayName":"Stanley M"}'
-# custom loan
-curl -X POST $BASE/api/admin/demo/clients/250788683008/loans $H \
-  -d '{"productName":"Agri Loan","status":"ACTIVE","principalOutstanding":500000,"interestOutstanding":25000,"totalOverdue":0,"installment":45000,"nextDueDate":"2026-10-15"}'
-# change balances / status (e.g. push into arrears)
-curl -X PUT $BASE/api/admin/demo/loans/7 $H -d '{"status":"IN_ARREARS","totalOverdue":45000}'
-# repayment history line for the mini statement (applyToBalance=true also reduces the balance)
-curl -X POST $BASE/api/admin/demo/loans/7/repayments $H -d '{"amount":45000,"date":"2026-09-15"}'
-```
-
-| Method | Path | Body |
+| Setting | `omnichannel` (default) | `live` |
 |---|---|---|
-| GET | `/api/admin/demo/clients` | lists the allowed numbers with their loans |
-| POST | `/api/admin/demo/clients` | `msisdn`, `displayName?`, `active?`, `sampleLoans?` (default true) |
-| GET / PUT / DELETE | `/api/admin/demo/clients/{msisdn}` | PUT: `displayName?`, `active?`. DELETE also removes the loans and history |
-| POST | `/api/admin/demo/clients/{msisdn}/sample-loans` | adds the standard sample portfolio |
-| POST | `/api/admin/demo/clients/{msisdn}/loans` | `accountNo?`, `productName`, `status`, `principalOutstanding`, `interestOutstanding`, `totalOverdue`, `installment`, `nextDueDate` |
-| PUT / DELETE | `/api/admin/demo/loans/{loanId}` | PUT accepts the same fields; null fields are left unchanged |
-| GET / POST | `/api/admin/demo/loans/{loanId}/repayments` | `amount`, `date?`, `reference?`, `applyToBalance?` (default false) |
+| `FINERACT_MODE` | clients, loans, balances, next due date and mini statement from the Inkomoko Omnichannel API | Fineract REST API directly (`FINERACT_*`) |
+| `PAYMENT_MODE` | Mobile Money prompt through Omnichannel `/ussd/payment/initiate`; the Payment Hub posts to the loan and Omnichannel texts the customer | Efashe merchant API (`PAYMENT_*`) |
 
-The loan `status` can be `UNDER_REVIEW`, `APPROVED`, `ACTIVE`, `IN_ARREARS`, `SETTLED`, `REJECTED`, `WITHDRAWN` or `CLOSED`. To let a tester start over with a new PIN, use `POST /api/admin/pins/{msisdn}/reset`.
+Omnichannel requests are signed with HMAC-SHA256 (`OMNICHANNEL_BASE_URL`, `OMNICHANNEL_API_KEY`, `OMNICHANNEL_SECRET`). PINs, staff onboarding and lockout stay in this app's database. A number can use USSD only when Omnichannel reports it registered, `ACTIVE` and `ussdEnabled`, and staff have onboarded it. To test with a real customer, onboard their number in the portal; to let a tester start over with a new PIN, use `POST /api/admin/pins/{msisdn}/reset`.
 
-## Demo -> production switch (*662*105# -> *311#)
-
-The demo only replaces **one component**, the core-banking adapter behind the `FineractService` interface. Everything else runs the same code in both modes, so none of the pilot work is thrown away:
-
-| Kept as-is at the switch | Swapped at the switch |
-|---|---|
-| USSD engine, screens and translations, input parsing | `DemoFineractService` -> `FineractRestService` (`FINERACT_MODE=live`) |
-| consent, language, PIN setup/lockout, sessions | mock payment gateway -> Efashe gateway (`PAYMENT_MODE=live`) |
-| repayment ledger, idempotency, reconciliation (maker/checker) | mock SMS -> Efashe SMS (`SMS_MODE=live`) |
-| audit log, FAQ admin, dashboard, CI/CD, DB schema | `USSD_SERVICE_CODE` `662*105` -> `311` |
-
-**Environments.** Staging (`master`) stays the permanent demo/UAT environment: `*662*105#`, demo mode, its own database. Production (`main`) is live only, with `*311#` and Fineract. The `deploy-prod` job refuses any `*_MODE` other than `live` unless `ALLOW_DEMO_IN_PRODUCTION=true`, and the demo endpoints don't exist there. Demo data therefore never reaches the production database.
-
-**Switch checklist:**
-1. **Fineract sandbox.** Point staging at the Fineract sandbox (`FINERACT_MODE_STAGING=live` plus the credentials) and run the same UAT scripts used for the demo. Confirm that client search by phone, the loan status mapping, next due date / installment and the repayment posting (`paymentTypeId`, `externalId`) match what the demo showed. Anything that differs is fixed in `FineractRestService` or `ELoanStatus.fromFineract`; the menus don't change.
-2. **Payments and SMS.** Switch `PAYMENT_MODE_STAGING` and `SMS_MODE_STAGING` to `live` against Efashe test credentials and test a real MoMo repayment end to end, including the callback URL.
-3. **Production variables.** Set them in GitLab: DB, Fineract, payment, SMS, `PAYMENT_CALLBACK_TOKEN`, `SUPPORT_HELPLINE`. `USSD_SERVICE_CODE` defaults to `311`.
-4. **Go-live.** Merge to `main`, then ask FDI to route `*311#` to the production URL. Pilot users set their PIN again on first `*311#` dial. PINs are stored per environment, and a PIN is also reset automatically if the client ID behind a number changes.
-5. **Optional rollback.** Keep `*662*105#` pointed at staging during hypercare, so the demo stays available for training.
-6. **After go-live.** The `demo_*` tables stay empty and unused in production. They can be dropped later with a new migration once the pilot is formally closed.
+**Environments.** Staging (`master`, `*662*105#`) uses the Omnichannel staging API. Production (`main`, `*311#`) also defaults to `omnichannel`, with the production URL, key and secret set in GitLab; the `deploy-prod` job requires the credentials of whichever mode is selected.
 
 ## Gateway request format
 
@@ -270,11 +218,20 @@ This pipeline follows the loan-service pipeline. It uses the same shell-executor
 
 * **Image:** `registry.gitlab.com/efashe2/efashe-wallet/inkomoko-ussd:<branch-slug>`. The pipeline also pushes `:latest` and a tag for the short commit SHA.
 * **Container:** `inkomoko-ussd-service`, listening on port **8093** (`APP_PORT` in `.gitlab-ci.yml`; loan-service uses 8089). The health check is `/actuator/health`.
-* **Staging variables:** use the `_STAGING` suffix, e.g. `DB_PASSWORD_STAGING` or `FINERACT_MODE_STAGING`. Integrations default to `mock`. When a mode is set to `live`, its credentials are required.
+* **Staging variables** (`_STAGING` suffix):
+
+  | Variable | Required | Notes |
+  |---|---|---|
+  | `OMNICHANNEL_SECRET_STAGING` | yes | HMAC secret; `OMNICHANNEL_API_KEY_STAGING` defaults to `fdi`, `OMNICHANNEL_BASE_URL_STAGING` to `http://dev.inkomoko.com:1134/api/v1` |
+  | `SMS_API_KEY_STAGING`, `SMS_BASE_URL_STAGING` | for real SMS | setting `SMS_API_KEY_STAGING` turns SMS live (otherwise messages are only logged); force with `SMS_MODE_STAGING` |
+  | `DB_*_STAGING`, `JWT_SECRET_STAGING`, `MAIL_*_STAGING`, `SUPPORT_HELPLINE_STAGING`, `USSD_SERVICE_CODE_STAGING` | no | defaults in `docker-compose.staging.yml` |
+
 * **Production variables:**
-  * Always required: `DB_USERNAME`, `DB_PASSWORD`, `PAYMENT_CALLBACK_TOKEN`, `JWT_SECRET` (at least 32 characters; staging uses `JWT_SECRET_STAGING`).
-  * Integrations default to `live`, which also requires `FINERACT_BASE_URL/USERNAME/PASSWORD`, `PAYMENT_BASE_URL/API_KEY/CALLBACK_URL` and `SMS_BASE_URL/API_KEY`.
-  * Optional: `DB_HOST`, `DB_PORT`, `DB_NAME`, `FINERACT_TENANT_ID`, `FINERACT_PAYMENT_TYPE_ID`, `SUPPORT_HELPLINE`, `*_MODE`.
+  * Always required: `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET` (at least 32 characters).
+  * Core banking and payments default to `omnichannel`: `OMNICHANNEL_BASE_URL`, `OMNICHANNEL_API_KEY`, `OMNICHANNEL_SECRET`.
+  * SMS defaults to `live`: `SMS_BASE_URL`, `SMS_API_KEY`.
+  * Optional: `DB_HOST`, `DB_PORT`, `DB_NAME`, `SUPPORT_HELPLINE`, `USSD_SERVICE_CODE`, `MAIL_*` (`MAIL_MODE=smtp` requires `MAIL_HOST`).
+* **Not used with Omnichannel:** `FINERACT_BASE_URL/TENANT_ID/USERNAME/PASSWORD/PAYMENT_TYPE_ID` are read only when `FINERACT_MODE=live` (Fineract directly), and `PAYMENT_BASE_URL/API_KEY/MERCHANT_CODE/CALLBACK_URL/CALLBACK_TOKEN` only when `PAYMENT_MODE=live` (Efashe). The pipeline asks for them only in those modes.
 * **Logs:** written to `/opt/tomcat/logs/inkomoko-ussd.log` on the host.
 
 ## Before go-live (open items)
