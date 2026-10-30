@@ -68,10 +68,12 @@ public class OmnichannelClient {
         String payload = canonicalBody(body);
         String timestamp = String.valueOf(System.currentTimeMillis());
         String signature = sign(timestamp, payload);
+        String endpoint = method + " " + stripSlash(cfg.getBaseUrl()) + pathAndQuery;
+        log.info("CBS request  -> {} body={}", endpoint, payload.isEmpty() ? "-" : payload);
         if (log.isDebugEnabled()) {
-            log.debug("Omnichannel {} {} bodyHash={} timestamp={} signature={}", method, pathAndQuery,
-                    sha256Hex(payload), timestamp, signature);
+            log.debug("CBS signing {} bodyHash={} timestamp={} signature={}", endpoint, sha256Hex(payload), timestamp, signature);
         }
+        long started = System.nanoTime();
 
         HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(stripSlash(cfg.getBaseUrl()) + pathAndQuery))
                 .timeout(Duration.ofMillis(cfg.getReadTimeoutMs()))
@@ -90,23 +92,25 @@ public class OmnichannelClient {
         try {
             res = http.send(req.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (IOException e) {
+            log.error("CBS response <- {} unreachable after {}ms: {}", endpoint, elapsedMs(started), e.toString());
             throw new OmnichannelException("Omnichannel unreachable: " + e.getMessage(), 0, "UNREACHABLE", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new OmnichannelException("Omnichannel call interrupted", 0, "INTERRUPTED", e);
         }
 
+        long ms = elapsedMs(started);
         Map<String, Object> envelope = parse(res.body());
         String errorCode = str(envelope.get("errorCode"));
         String message = str(envelope.get("message"));
         boolean ok = res.statusCode() / 100 == 2 && !Boolean.FALSE.equals(envelope.get("success"));
         if (!ok) {
-            log.warn("Omnichannel {} {} failed: http={} errorCode={} message={}",
-                    method, pathAndQuery.replaceAll("phoneNumber=\\d+", "phoneNumber=***"),
-                    res.statusCode(), errorCode, message);
+            log.warn("CBS response <- {} http={} ms={} success=false errorCode={} message={} body={}",
+                    endpoint, res.statusCode(), ms, errorCode, message, abbreviate(res.body()));
             throw new OmnichannelException(message == null ? "Omnichannel returned HTTP " + res.statusCode() : message,
                     res.statusCode(), errorCode, null);
         }
+        log.info("CBS response <- {} http={} ms={} body={}", endpoint, res.statusCode(), ms, abbreviate(res.body()));
         return envelope.get("data");
     }
 
@@ -171,6 +175,16 @@ public class OmnichannelClient {
 
     private static String enc(String s) {
         return URLEncoder.encode(s, StandardCharsets.UTF_8);
+    }
+
+    private static long elapsedMs(long startedNanos) {
+        return (System.nanoTime() - startedNanos) / 1_000_000;
+    }
+
+    private static String abbreviate(String body) {
+        if (body == null || body.isBlank()) return "-";
+        String oneLine = body.replaceAll("\\s+", " ");
+        return oneLine.length() > 1000 ? oneLine.substring(0, 1000) + "...(" + oneLine.length() + " chars)" : oneLine;
     }
 
     private static String stripSlash(String url) {

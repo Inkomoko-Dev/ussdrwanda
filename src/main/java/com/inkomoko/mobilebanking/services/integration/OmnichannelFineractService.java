@@ -38,19 +38,30 @@ public class OmnichannelFineractService implements FineractService {
     @Override
     public Optional<ClientDto> findClientByMsisdn(String msisdn) {
         Map<String, Object> v = map(api.post("/ussd/phone/validate", Map.of("phoneNumber", msisdn)));
-        if (!Boolean.TRUE.equals(v.get("registered"))) return Optional.empty();
+        log.info("CBS phone check msisdn={} valid={} registered={} accountStatus={} ussdEnabled={} message={}",
+                msisdn, v.get("valid"), v.get("registered"), v.get("accountStatus"), v.get("ussdEnabled"), v.get("message"));
+        if (!Boolean.TRUE.equals(v.get("registered"))) {
+            log.info("CBS result msisdn={} -> NOT REGISTERED in core banking", msisdn);
+            return Optional.empty();
+        }
         Map<String, Object> profile;
         try {
             profile = map(api.get("/customer/profile", Map.of("phoneNumber", msisdn)));
         } catch (OmnichannelException e) {
-            if (e.isNotFound()) return Optional.empty();
+            if (e.isNotFound()) {
+                log.info("CBS result msisdn={} -> registered but no customer profile found; treated as not registered", msisdn);
+                return Optional.empty();
+            }
             throw e;
         }
         boolean active = !Boolean.FALSE.equals(v.get("valid"))
                 && "ACTIVE".equalsIgnoreCase(str(v.get("accountStatus")))
                 && !Boolean.FALSE.equals(v.get("ussdEnabled"));
         String name = firstNonBlank(str(profile.get("displayName")), str(v.get("customerName")));
-        return Optional.of(new ClientDto(customerId(profile), name,
+        Long customerId = customerId(profile);
+        log.info("CBS result msisdn={} -> customerId={} accountNo={} profileStatus={} eligible={} usable={}",
+                msisdn, customerId, profile.get("accountNo"), profile.get("accountStatus"), profile.get("eligible"), active);
+        return Optional.of(new ClientDto(customerId, name,
                 firstNonBlank(str(profile.get("phoneNumber")), msisdn), str(profile.get("email")), active));
     }
 
@@ -64,6 +75,8 @@ public class OmnichannelFineractService implements FineractService {
             throw e;
         }
         if (profile.isEmpty()) return Optional.empty();
+        log.info("CBS profile customerId={} -> accountNo={} accountStatus={}", clientId, profile.get("accountNo"),
+                profile.get("accountStatus"));
         return Optional.of(new ClientDto(customerId(profile), str(profile.get("displayName")),
                 str(profile.get("phoneNumber")), str(profile.get("email")),
                 "ACTIVE".equalsIgnoreCase(str(profile.get("accountStatus")))));
@@ -86,6 +99,8 @@ public class OmnichannelFineractService implements FineractService {
                     num(l.get("principalOutstanding")), num(l.get("outstandingBalance")), overdue,
                     date(l.get("nextDueDate")), num(l.get("nextPaymentDue"))));
         }
+        log.info("CBS loans customerId={} -> {} loan(s) {}", clientId, loans.size(),
+                loans.stream().map(l -> l.accountNo() + ":" + l.status() + ":" + l.totalOutstanding()).toList());
         return loans;
     }
 
@@ -102,6 +117,9 @@ public class OmnichannelFineractService implements FineractService {
             }
         }
         Integer daysInArrears = d.get("daysInArrears") instanceof Number n ? n.intValue() : null;
+        log.info("CBS loan details loanId={} accountNo={} status={} outstanding={} overdue={} daysInArrears={} nextDue={} {}",
+                loanId, accountNo, d.get("loanStatus"), d.get("outstandingBalance"), overdue, daysInArrears,
+                d.get("nextDueDate"), d.get("nextPaymentDue"));
         return new LoanSummaryDto(toLong(d.get("loanId")) == null ? loanId : toLong(d.get("loanId")),
                 toLong(d.get("customerId")), accountNo, str(d.get("productName")),
                 status(str(d.get("loanStatus")), overdue, daysInArrears),
@@ -127,6 +145,8 @@ public class OmnichannelFineractService implements FineractService {
                     num(t.get("amount")), firstNonBlank(str(t.get("externalId")), txnId)));
             if (out.size() >= limit) break;
         }
+        log.info("CBS mini statement loanId={} accountNo={} -> {} transaction(s), {} repayment(s) shown",
+                loanId, accountNo, list(statement.get("transactions")).size(), out.size());
         return out;
     }
 
