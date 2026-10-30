@@ -46,6 +46,9 @@ public class OmnichannelPaymentGatewayService implements PaymentGatewayService {
             String status = str(res.get("status"));
             boolean accepted = requestId != null && !Boolean.FALSE.equals(res.get("success"))
                     && !"FAILED".equalsIgnoreCase(status);
+            log.info("CBS payment initiate ref={} payer={} account={} amount={} -> requestId={} status={} accepted={} hub={} {}",
+                    tx.getReference(), tx.getMsisdn(), tx.getLoanAccountNo(), tx.getAmount(), requestId, status, accepted,
+                    res.get("hubResponseCode"), res.get("hubResponseMessage"));
             return new PaymentInitResult(accepted, requestId,
                     firstNonNull(str(res.get("message")), str(res.get("hubResponseMessage"))));
         } catch (OmnichannelException e) {
@@ -63,6 +66,9 @@ public class OmnichannelPaymentGatewayService implements PaymentGatewayService {
         try {
             Map<String, Object> res = map(api.get("/transactions/" + tx.getGatewayRef(), null));
             Object amount = res.get("amount");
+            log.info("CBS payment status ref={} requestId={} -> status={} amount={} mpesaRef={} failureReason={}",
+                    tx.getReference(), tx.getGatewayRef(), res.get("status"), amount, res.get("mpesaRef"),
+                    res.get("failureReason"));
             return new PaymentStatusResult(str(res.get("status")), tx.getGatewayRef(),
                     firstNonNull(str(res.get("mpesaRef")), str(res.get("externalId"))),
                     amount == null ? null : new BigDecimal(amount.toString()),

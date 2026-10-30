@@ -292,6 +292,19 @@ public class UssdController {
         return identifyClient(s);
     }
 
+    private void logClientCheck(UssdSession s, Optional<ClientDto> client) {
+        if (client.isEmpty()) {
+            log.info("USSD client check | msisdn={} sessionId={} -> NOT REGISTERED in core banking, ending session",
+                    s.getMsisdn(), s.getSessionId());
+        } else if (!client.get().active()) {
+            log.info("USSD client check | msisdn={} sessionId={} clientId={} -> INACTIVE in core banking, ending session",
+                    s.getMsisdn(), s.getSessionId(), client.get().clientId());
+        } else {
+            log.info("USSD client check | msisdn={} sessionId={} clientId={} name={} -> active in core banking",
+                    s.getMsisdn(), s.getSessionId(), client.get().clientId(), client.get().displayName());
+        }
+    }
+
     /**
      * @return a terminal screen when this phone cannot use the service, or null when it can
      *         (onboarded, active, and either ready for a PIN or still to create one)
@@ -301,10 +314,12 @@ public class UssdController {
         try {
             client = fineract.findClientByMsisdn(s.getMsisdn());
         } catch (Exception e) {
-            log.error("Client lookup failed msisdn={} error={}", s.getMsisdn(), e.getMessage());
+            log.error("USSD client check | msisdn={} sessionId={} -> CBS ERROR, showing service unavailable: {}",
+                    s.getMsisdn(), s.getSessionId(), e.getMessage());
             s.setLanguage(lang);
             return common.unavailable(s);
         }
+        logClientCheck(s, client);
         String helpline = common.helpline();
         if (client.isEmpty()) {
             s.setClientState(EClientState.NOT_REGISTERED);
@@ -320,6 +335,8 @@ public class UssdController {
             return common.endWith(s, ESessionEndReason.NOT_REGISTERED, headings.inactiveClient(lang, helpline));
         }
         EClientState state = pinService.resolveState(s.getMsisdn(), c.clientId(), s.getSessionId());
+        log.info("USSD client check | msisdn={} sessionId={} clientId={} -> onboarding/PIN state {}",
+                s.getMsisdn(), s.getSessionId(), c.clientId(), state);
         s.setClientState(state);
         return switch (state) {
             case LOCKED -> {
@@ -366,9 +383,11 @@ public class UssdController {
         try {
             client = fineract.findClientByMsisdn(s.getMsisdn());
         } catch (Exception e) {
-            log.error("Client lookup failed msisdn={} error={}", s.getMsisdn(), e.getMessage());
+            log.error("USSD client check | msisdn={} sessionId={} -> CBS ERROR, showing service unavailable: {}",
+                    s.getMsisdn(), s.getSessionId(), e.getMessage());
             return common.unavailable(s);
         }
+        logClientCheck(s, client);
         String helpline = common.helpline();
         if (client.isEmpty()) {
             s.setClientState(EClientState.NOT_REGISTERED);
@@ -385,6 +404,8 @@ public class UssdController {
         }
 
         EClientState state = pinService.resolveState(s.getMsisdn(), c.clientId(), s.getSessionId());
+        log.info("USSD client check | msisdn={} sessionId={} clientId={} -> onboarding/PIN state {}",
+                s.getMsisdn(), s.getSessionId(), c.clientId(), state);
         s.setClientState(state);
         s.setLevel(LEVEL_AUTH);
         return switch (state) {
