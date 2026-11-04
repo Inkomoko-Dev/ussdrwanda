@@ -6,7 +6,10 @@ import { BrandBar, Logo } from './ui';
 interface NavItem { to: string; label: string; any: Privilege[] }
 
 const SECTIONS: { title: string; items: NavItem[] }[] = [
-  { title: 'Overview', items: [{ to: '/dashboard', label: 'Dashboard', any: ['DASHBOARD_VIEW'] }] },
+  { title: 'Overview', items: [
+    { to: '/dashboard', label: 'Dashboard', any: ['DASHBOARD_VIEW'] },
+    { to: '/sessions', label: 'USSD sessions', any: ['SESSION_VIEW'] },
+  ] },
   {
     title: 'Customers',
     items: [{ to: '/customers', label: 'Customers', any: ['CUSTOMER_VIEW', 'CUSTOMER_ONBOARD'] }],

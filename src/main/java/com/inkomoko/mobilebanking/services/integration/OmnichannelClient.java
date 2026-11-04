@@ -59,8 +59,13 @@ public class OmnichannelClient {
         return call("GET", path + queryString(query), null);
     }
 
+    /** POST with a JSON body, or with an empty body when {@code body} is null. */
     public Object post(String path, Map<String, ?> body) {
         return call("POST", path, body);
+    }
+
+    public boolean manualSuccessEnabled() {
+        return cfg.isManualSuccessEnabled();
     }
 
     private Object call(String method, String pathAndQuery, Map<String, ?> body) {
@@ -81,8 +86,10 @@ public class OmnichannelClient {
                 .header("X-API-KEY", cfg.getApiKey())
                 .header("X-TIMESTAMP", timestamp)
                 .header("X-SIGNATURE", signature);
-        if (body == null) {
+        if ("GET".equals(method)) {
             req.GET();
+        } else if (body == null) {
+            req.method(method, HttpRequest.BodyPublishers.noBody());
         } else {
             req.header("Content-Type", "application/json")
                     .method(method, HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8));
@@ -108,7 +115,7 @@ public class OmnichannelClient {
             log.warn("CBS response <- {} http={} ms={} success=false errorCode={} message={} body={}",
                     endpoint, res.statusCode(), ms, errorCode, message, abbreviate(res.body()));
             throw new OmnichannelException(message == null ? "Omnichannel returned HTTP " + res.statusCode() : message,
-                    res.statusCode(), errorCode, null);
+                    res.statusCode(), errorCode, null, envelope.get("data"));
         }
         log.info("CBS response <- {} http={} ms={} body={}", endpoint, res.statusCode(), ms, abbreviate(res.body()));
         return envelope.get("data");

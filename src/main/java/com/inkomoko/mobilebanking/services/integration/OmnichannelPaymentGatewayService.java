@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Mobile Money repayments through Omnichannel (inkomoko.payment.mode=omnichannel).
@@ -19,6 +20,8 @@ import java.util.Map;
  * as the gateway reference. GET /transactions/{requestId} reports PENDING, SUCCESS or FAILED.
  * The Payment Hub posts successful payments to the loan and Omnichannel texts the customer, so
  * there is no posting or refund call here. A long PENDING is Omnichannel reconciling, not a decline.
+ * While the telecom side is not live, POST /transactions/{requestId}/manual-success completes a
+ * pushed payment (see {@link #markSuccessful}).
  */
 @Slf4j
 @Service
@@ -52,9 +55,11 @@ public class OmnichannelPaymentGatewayService implements PaymentGatewayService {
             return new PaymentInitResult(accepted, requestId,
                     firstNonNull(str(res.get("message")), str(res.get("hubResponseMessage"))));
         } catch (OmnichannelException e) {
-            log.error("Omnichannel payment initiate failed ref={} errorCode={} error={}",
-                    tx.getReference(), e.errorCode(), e.getMessage());
-            return new PaymentInitResult(false, null, e.getMessage());
+            // A refused push may still name Omnichannel's transaction; keep it so staff can mark it as paid.
+            String requestId = str(map(e.data()).get("requestId"));
+            log.error("Omnichannel payment initiate failed ref={} errorCode={} requestId={} error={}",
+                    tx.getReference(), e.errorCode(), requestId, e.getMessage());
+            return new PaymentInitResult(false, requestId, e.getMessage());
         }
     }
 
@@ -65,14 +70,10 @@ public class OmnichannelPaymentGatewayService implements PaymentGatewayService {
         }
         try {
             Map<String, Object> res = map(api.get("/transactions/" + tx.getGatewayRef(), null));
-            Object amount = res.get("amount");
             log.info("CBS payment status ref={} requestId={} -> status={} amount={} mpesaRef={} failureReason={}",
-                    tx.getReference(), tx.getGatewayRef(), res.get("status"), amount, res.get("mpesaRef"),
+                    tx.getReference(), tx.getGatewayRef(), res.get("status"), res.get("amount"), res.get("mpesaRef"),
                     res.get("failureReason"));
-            return new PaymentStatusResult(str(res.get("status")), tx.getGatewayRef(),
-                    firstNonNull(str(res.get("mpesaRef")), str(res.get("externalId"))),
-                    amount == null ? null : new BigDecimal(amount.toString()),
-                    str(res.get("failureReason")));
+            return toStatus(tx, res);
         } catch (OmnichannelException e) {
             log.warn("Omnichannel status check failed ref={} requestId={} error={}",
                     tx.getReference(), tx.getGatewayRef(), e.getMessage());
@@ -83,6 +84,67 @@ public class OmnichannelPaymentGatewayService implements PaymentGatewayService {
     @Override
     public PaymentReversalResult requestReversal(RepaymentTransaction tx) {
         return new PaymentReversalResult(false, "Refunds are not available through Omnichannel");
+    }
+
+    /**
+     * POST /transactions/{requestId}/manual-success, only while inkomoko.omnichannel.manual-success-enabled
+     * is true. Omnichannel answers 403 MANUAL_SUCCESS_DISABLED once its own switch is off; that and any
+     * other error return empty so the payment carries on with normal status checks.
+     */
+    @Override
+    public Optional<PaymentStatusResult> markSuccessful(RepaymentTransaction tx) {
+        if (!api.manualSuccessEnabled() || tx.getGatewayRef() == null || tx.getGatewayRef().isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(callManualSuccess(tx));
+        } catch (OmnichannelException e) {
+            if ("MANUAL_SUCCESS_DISABLED".equalsIgnoreCase(e.errorCode())) {
+                log.warn("Omnichannel refused manual success ref={} requestId={}: switched off on their side;"
+                        + " set OMNICHANNEL_MANUAL_SUCCESS_ENABLED=false", tx.getReference(), tx.getGatewayRef());
+            } else {
+                log.warn("Omnichannel manual success failed ref={} requestId={} errorCode={} error={}",
+                        tx.getReference(), tx.getGatewayRef(), e.errorCode(), e.getMessage());
+            }
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public PaymentStatusResult requestManualSuccess(RepaymentTransaction tx) {
+        if (!api.manualSuccessEnabled()) {
+            throw new IllegalStateException("Mark as paid is switched off (OMNICHANNEL_MANUAL_SUCCESS_ENABLED=false)");
+        }
+        if (tx.getGatewayRef() == null || tx.getGatewayRef().isBlank()) {
+            // manual-success is addressed by Omnichannel's requestId; without one there is no URL to call.
+            throw new IllegalStateException("Omnichannel returned no transaction id (requestId) for this payment, so it"
+                    + " cannot be marked as paid on their side. Their reply was: "
+                    + (tx.getFailureReason() == null ? "none" : tx.getFailureReason()));
+        }
+        try {
+            return callManualSuccess(tx);
+        } catch (OmnichannelException e) {
+            String reason = "MANUAL_SUCCESS_DISABLED".equalsIgnoreCase(e.errorCode())
+                    ? "Omnichannel has switched manual success off; set OMNICHANNEL_MANUAL_SUCCESS_ENABLED=false"
+                    : e.getMessage();
+            throw new IllegalStateException("Omnichannel refused to mark the payment as paid: " + reason);
+        }
+    }
+
+    private PaymentStatusResult callManualSuccess(RepaymentTransaction tx) {
+        Map<String, Object> res = map(api.post("/transactions/" + tx.getGatewayRef() + "/manual-success", null));
+        log.warn("CBS manual success ref={} requestId={} -> status={} amount={} (no telecom debit)",
+                tx.getReference(), tx.getGatewayRef(), res.get("status"), res.get("amount"));
+        return toStatus(tx, res);
+    }
+
+    /** Maps a ChannelTransactionResponse. */
+    private static PaymentStatusResult toStatus(RepaymentTransaction tx, Map<String, Object> res) {
+        Object amount = res.get("amount");
+        return new PaymentStatusResult(str(res.get("status")), tx.getGatewayRef(),
+                firstNonNull(str(res.get("mpesaRef")), str(res.get("externalId"))),
+                amount == null ? null : new BigDecimal(amount.toString()),
+                str(res.get("failureReason")));
     }
 
     @SuppressWarnings("unchecked")

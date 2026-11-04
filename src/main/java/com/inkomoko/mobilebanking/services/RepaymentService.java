@@ -15,6 +15,7 @@ import com.inkomoko.mobilebanking.utils.DateUtility;
 import com.inkomoko.mobilebanking.utils.GeneralMethods;
 import com.inkomoko.mobilebanking.utils.Utility;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -23,6 +24,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.Executor;
 
 /**
  * Mobile Money repayment and reconciliation (proposal §3.5):
@@ -62,12 +64,14 @@ public class RepaymentService {
     private final TransactionTemplate tx;
     private final CountryService countries;
     private final MessageService messages;
+    private final Executor background;
 
     public RepaymentService(RepaymentTransactionRepository repo, PaymentGatewayService gateway,
                             FineractService fineract, SmsService sms, AuditService audit,
                             LanguagePreferenceService languages, InkomokoProperties props,
                             PlatformTransactionManager txManager, CountryService countries,
-                            MessageService messages) {
+                            MessageService messages,
+                            @Qualifier("applicationTaskExecutor") Executor background) {
         this.repo = repo;
         this.gateway = gateway;
         this.fineract = fineract;
@@ -78,6 +82,7 @@ public class RepaymentService {
         this.tx = new TransactionTemplate(txManager);
         this.countries = countries;
         this.messages = messages;
+        this.background = background;
     }
 
     /** Omnichannel: the Payment Hub posts the repayment to the loan and texts the customer. */
@@ -142,7 +147,38 @@ public class RepaymentService {
 
         audit.ussd(s.getMsisdn(), s.getSessionId(), "REPAYMENT_INITIATED", ref, r.accepted(),
                 "loanId=" + s.getLoanId() + " amount=" + s.getAmount() + " telecom=" + s.getTelecom());
+        if (r.accepted() && props.getOmnichannel().isManualSuccessEnabled()) {
+            // Off the USSD thread: the session answers at once and the override follows.
+            try {
+                background.execute(() -> confirmManually(ref));
+            } catch (Exception e) {
+                log.warn("Could not schedule manual success ref={}; reconciliation will retry: {}", ref, e.getMessage());
+            }
+        }
         return new InitOutcome(r.accepted() ? InitStatus.ACCEPTED : InitStatus.GATEWAY_REJECTED, updated);
+    }
+
+    /**
+     * Pilot override (inkomoko.omnichannel.manual-success-enabled): asks the gateway to mark a pushed
+     * payment successful, then records the result like a normal status check. Returns true when the
+     * payment reached a final state.
+     */
+    private boolean confirmManually(String reference) {
+        try {
+            RepaymentTransaction t = repo.findByReference(reference).orElse(null);
+            if (t == null || (t.getStatus() != ETransactionStatus.PENDING && t.getStatus() != ETransactionStatus.INITIATED)) {
+                return false;
+            }
+            PaymentStatusResult result = gateway.markSuccessful(t).orElse(null);
+            if (result == null || !(result.isSuccess() || result.isFailed())) return false;
+            audit.system("REPAYMENT_MANUAL_SUCCESS", reference, result.isSuccess(),
+                    "requestId=" + t.getGatewayRef() + " status=" + result.status() + " (no telecom debit)");
+            handleGatewayResult(reference, result);
+            return true;
+        } catch (Exception e) {
+            log.error("Manual success failed ref={}: {}", reference, e.getMessage(), e);
+            return false;
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -286,6 +322,7 @@ public class RepaymentService {
         stale.addAll(repo.findTop50ByStatusAndUpdatedAtBeforeOrderByUpdatedAtAsc(ETransactionStatus.PENDING, checkBefore));
         stale.addAll(repo.findTop50ByStatusAndUpdatedAtBeforeOrderByUpdatedAtAsc(ETransactionStatus.INITIATED, checkBefore));
         for (RepaymentTransaction t : stale) {
+            if (props.getOmnichannel().isManualSuccessEnabled() && confirmManually(t.getReference())) continue;
             PaymentStatusResult status;
             try {
                 status = gateway.checkStatus(t);
@@ -336,6 +373,46 @@ public class RepaymentService {
                 "telecom=" + status.status() + " repayment=" + after.getStatus());
         String message = status.message() == null ? "Telecom status: " + status.status() : status.message();
         return new TelecomCheck(status.status(), after.getStatus().name(), message);
+    }
+
+    public boolean manualSuccessEnabled() {
+        return props.getOmnichannel().isManualSuccessEnabled();
+    }
+
+    /**
+     * Pilot override from the portal: Omnichannel marks the payment successful without a telecom debit,
+     * then it is recorded and posted like any confirmed payment. Works for a payment that is still open
+     * or that failed: Omnichannel decides; a failed one is reopened once Omnichannel confirms it.
+     * Only while manual success is switched on.
+     */
+    public RepaymentTransaction markPaidManually(String reference, String by) {
+        RepaymentTransaction t = require(reference);
+        boolean unpaid = t.getStatus() == ETransactionStatus.INITIATED
+                || t.getStatus() == ETransactionStatus.PENDING
+                || t.getStatus() == ETransactionStatus.FAILED
+                || (t.getStatus() == ETransactionStatus.NEEDS_REVIEW && t.getPaidAt() == null);
+        if (!unpaid) {
+            throw new IllegalStateException("This payment is " + t.getStatus() + ", so it cannot be marked as paid");
+        }
+        PaymentStatusResult result = gateway.requestManualSuccess(t);
+        if (!result.isSuccess()) {
+            throw new IllegalStateException("Omnichannel did not confirm the payment (status "
+                    + (result.status() == null ? "unknown" : result.status()) + ")");
+        }
+        // FAILED is final for callbacks; reopen it so the confirmation is recorded and posted.
+        tx.executeWithoutResult(st -> repo.lockByReference(reference).ifPresent(row -> {
+            if (row.getStatus() == ETransactionStatus.FAILED) {
+                row.setStatus(ETransactionStatus.PENDING);
+                row.setFailureReason(null);
+                row.setUpdatedAt(DateUtility.nowKigali());
+                repo.save(row);
+            }
+        }));
+        handleGatewayResult(reference, result);
+        RepaymentTransaction after = require(reference);
+        audit.admin(by, "REPAYMENT_MARKED_PAID_MANUAL", reference, true,
+                "requestId=" + t.getGatewayRef() + " repayment=" + after.getStatus() + " (no telecom debit)");
+        return after;
     }
 
     /** Posts a collected repayment onto the loan. Safe to repeat: the reference is the external id. */

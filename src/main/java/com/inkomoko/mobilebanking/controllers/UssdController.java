@@ -64,12 +64,12 @@ public class UssdController {
     private static final Pattern MSISDN_PATTERN = Pattern.compile("^\\+?[0-9]{9,15}$");
     private static final int MAX_INPUT_LENGTH = 200;
 
-    private static final int LEVEL_LANGUAGE = 1;
-    private static final int LEVEL_CONSENT = 2;
-    private static final int LEVEL_AUTH = 3;
+    public static final int LEVEL_LANGUAGE = 1;
+    public static final int LEVEL_CONSENT = 2;
+    public static final int LEVEL_AUTH = 3;
 
-    private static final String STEP_PIN_SETUP = "PIN_SETUP";
-    private static final String STEP_PIN_CONFIRM = "PIN_CONFIRM";
+    public static final String STEP_PIN_SETUP = "PIN_SETUP";
+    public static final String STEP_PIN_CONFIRM = "PIN_CONFIRM";
     private static final String STEP_PIN_ENTRY = "PIN_ENTRY";
 
     // ── Repositories / services ────────────────────────────────────────────
