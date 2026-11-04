@@ -116,9 +116,13 @@ const STATUS_KIND: Record<string, string> = {
   NOT_SET: 'info', PENDING: 'info', INITIATED: 'info', PAID: 'info', PENDING_APPROVAL: 'warn', UNDER_REVIEW: 'info',
   LOCKED: 'bad', DISABLED: 'bad', FAILED: 'bad', POSTING_FAILED: 'warn', NEEDS_REVIEW: 'warn', IN_ARREARS: 'warn',
   REVERSED: 'neutral', REJECTED: 'neutral', CLOSED: 'neutral', WITHDRAWN: 'neutral',
+  COMPLETED: 'ok', USER_EXIT: 'ok', IN_PROGRESS: 'info', ABANDONED: 'warn', CONSENT_DECLINED: 'neutral',
+  NOT_REGISTERED: 'neutral', ACCOUNT_LOCKED: 'bad', ERROR: 'bad', ENDED: 'neutral',
 };
 const STATUS_LABEL: Record<string, string> = {
   NOT_SET: 'PIN not set', PENDING_APPROVAL: 'Pending approval', ACCEPTED: 'Accepted', NOT_ACCEPTED: 'Not yet',
+  USER_EXIT: 'Exited from menu', ABANDONED: 'Left / timed out', IN_PROGRESS: 'In progress',
+  CONSENT_DECLINED: 'Declined terms', ERROR: 'System error',
 };
 
 export function StatusBadge({ status }: { status: string }) {

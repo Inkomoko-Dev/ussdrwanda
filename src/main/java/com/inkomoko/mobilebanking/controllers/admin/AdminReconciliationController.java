@@ -38,6 +38,7 @@ import java.util.Map;
  *
  *   GET  /api/admin/repayments?status=NEEDS_REVIEW       list transactions
  *   GET  /api/admin/repayments/{reference}               one transaction + its reconciliation history
+ *   POST /api/admin/repayments/{reference}/manual-success pilot: Omnichannel marks a pending payment paid
  *   POST /api/admin/repayments/{reference}/reconcile     maker proposes REPOST / MARK_POSTED / MARK_FAILED / MARK_REVERSED
  *   GET  /api/admin/reconciliation-actions               actions awaiting approval
  *   POST /api/admin/reconciliation-actions/{id}/approve  checker (different user) approves → executed
@@ -126,6 +127,7 @@ public class AdminReconciliationController {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("transaction", t);
             m.put("reconciliationActions", actionRepo.findByTransactionReferenceOrderByCreatedAtDesc(reference));
+            m.put("manualSuccessEnabled", repayments.manualSuccessEnabled());
             return ResponseEntity.ok(ApiResponse.ok("Repayment", m));
         }).orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.fail("Not found")));
     }
@@ -142,6 +144,13 @@ public class AdminReconciliationController {
     @Operation(summary = "Post a telecom-confirmed collection to core banking")
     public ResponseEntity<ApiResponse<RepaymentTransaction>> post(@PathVariable String reference) {
         return ResponseEntity.ok(ApiResponse.ok("Posted to core banking", repayments.postCollected(reference, AdminActor.current())));
+    }
+
+    @PostMapping("/repayments/{reference}/manual-success")
+    @PreAuthorize("hasAuthority('REPAYMENT_MARK_PAID')")
+    @Operation(summary = "Pilot: have Omnichannel mark a pending payment as paid (no telecom debit), then post it")
+    public ResponseEntity<ApiResponse<RepaymentTransaction>> manualSuccess(@PathVariable String reference) {
+        return ResponseEntity.ok(ApiResponse.ok("Marked as paid", repayments.markPaidManually(reference, AdminActor.current())));
     }
 
     @PostMapping("/repayments/{reference}/reconcile")

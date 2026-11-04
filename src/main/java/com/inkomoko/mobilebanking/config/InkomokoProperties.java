@@ -36,7 +36,7 @@ public class InkomokoProperties {
 
     @Getter @Setter
     public static class Support {
-        private String helpline = "+250 XXX XXX XXX";
+        private String helpline = "0788363555";
     }
 
     @Getter @Setter
@@ -86,6 +86,12 @@ public class InkomokoProperties {
         private String channel = "USSD";
         private int connectTimeoutMs = 3000;
         private int readTimeoutMs = 15000;
+        /**
+         * Until the telecom integration is live on the Omnichannel side, every accepted repayment push
+         * is followed by POST /transactions/{requestId}/manual-success so it completes without a real
+         * MoMo debit. Mirrors Omnichannel's transactions.manual-success.enabled; turn off with it.
+         */
+        private boolean manualSuccessEnabled = false;
     }
 
     @Getter @Setter

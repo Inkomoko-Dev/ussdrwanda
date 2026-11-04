@@ -68,7 +68,8 @@ async function download(q: string, status: string) {
 function RepaymentDetail({ reference, onClose, onChanged }: { reference: string; onClose: () => void; onChanged: () => void }) {
   const { can } = useAuth();
   const { data, error, reload } = useLoad(
-    () => api.get<{ transaction: Repayment; reconciliationActions: ReconAction[] }>(`/api/admin/repayments/${reference}`), [reference]);
+    () => api.get<{ transaction: Repayment; reconciliationActions: ReconAction[]; manualSuccessEnabled: boolean }>(
+      `/api/admin/repayments/${reference}`), [reference]);
   const [action, setAction] = useState('REPOST');
   const [comment, setComment] = useState('');
   const [msg, setMsg] = useState('');
@@ -76,6 +77,18 @@ function RepaymentDetail({ reference, onClose, onChanged }: { reference: string;
   const [busy, setBusy] = useState(false);
   const t = data?.transaction;
   const pending = data?.reconciliationActions.some((a) => a.status === 'PENDING_APPROVAL');
+  // Pilot override (Omnichannel manual success): any unpaid or failed payment; Omnichannel decides.
+  const showMarkPaid = !!t && can('REPAYMENT_MARK_PAID') && (t.status === 'PENDING' || t.status === 'INITIATED'
+    || t.status === 'FAILED' || (t.status === 'NEEDS_REVIEW' && !t.paidAt));
+  const markPaidBlocked = data && !data.manualSuccessEnabled
+    ? 'Switched off: set OMNICHANNEL_MANUAL_SUCCESS_ENABLED=true and restart the app.' : '';
+
+  function markPaid() {
+    if (!t) return;
+    if (!confirm(`Mark ${fmtMoney(t.amount, t.currency)} from ${t.msisdn} as paid? Omnichannel records it as successful`
+      + ' without debiting the customer, and it is posted to the loan.')) return;
+    run('manual-success', 'Marked as paid.');
+  }
 
   async function run(path: string, done: string) {
     setBusy(true); setErr(''); setMsg('');
@@ -115,6 +128,15 @@ function RepaymentDetail({ reference, onClose, onChanged }: { reference: string;
           {(t.status === 'PAID' || t.status === 'POSTING_FAILED' || (t.status === 'NEEDS_REVIEW' && t.paidAt)) && (
             <button className="btn small" disabled={busy} onClick={() => run('post', 'Posted to core banking.')}>Post to core banking</button>
           )}
+        </div>
+      )}
+      {showMarkPaid && (
+        <div className="actions" style={{ marginBottom: 14, alignItems: 'center' }}>
+          <button className="btn small" disabled={busy || !!markPaidBlocked} onClick={markPaid}
+            title="Pilot: Omnichannel marks this payment successful without a telecom debit">
+            Mark as paid
+          </button>
+          {markPaidBlocked && <span className="hint">{markPaidBlocked}</span>}
         </div>
       )}
       <div className="form-grid">

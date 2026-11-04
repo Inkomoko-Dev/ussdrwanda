@@ -8,6 +8,7 @@ package com.inkomoko.mobilebanking.enums;
 public enum EPrivilege {
     DASHBOARD_VIEW("Dashboard", "View dashboard and reports"),
     AUDIT_VIEW("Dashboard", "View the audit log"),
+    SESSION_VIEW("Dashboard", "View USSD sessions and visits per phone number (billing)"),
 
     CUSTOMER_VIEW("Customers", "View USSD customers"),
     CUSTOMER_ONBOARD("Customers", "Onboard customers to USSD"),
@@ -17,6 +18,7 @@ public enum EPrivilege {
     REPAYMENT_VIEW("Repayments", "View repayments"),
     RECON_PROPOSE("Repayments", "Propose a reconciliation action (maker)"),
     RECON_APPROVE("Repayments", "Approve or reject reconciliation actions (checker)"),
+    REPAYMENT_MARK_PAID("Repayments", "Mark a pending repayment as paid without a telecom debit (pilot)"),
 
     FAQ_VIEW("Help content", "View help / FAQ content"),
     FAQ_MANAGE("Help content", "Create and edit help / FAQ content"),

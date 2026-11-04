@@ -1,7 +1,7 @@
 export type Privilege =
-  | 'DASHBOARD_VIEW' | 'AUDIT_VIEW'
+  | 'DASHBOARD_VIEW' | 'AUDIT_VIEW' | 'SESSION_VIEW'
   | 'CUSTOMER_VIEW' | 'CUSTOMER_ONBOARD' | 'CUSTOMER_PIN_RESET' | 'CUSTOMER_PIN_UNLOCK' | 'CUSTOMER_DISABLE'
-  | 'REPAYMENT_VIEW' | 'RECON_PROPOSE' | 'RECON_APPROVE'
+  | 'REPAYMENT_VIEW' | 'RECON_PROPOSE' | 'RECON_APPROVE' | 'REPAYMENT_MARK_PAID'
   | 'FAQ_VIEW' | 'FAQ_MANAGE' | 'MESSAGE_VIEW' | 'MESSAGE_MANAGE'
   | 'USER_VIEW' | 'USER_MANAGE' | 'ROLE_VIEW' | 'ROLE_MANAGE'
   | 'COUNTRY_VIEW' | 'COUNTRY_MANAGE' | 'LANGUAGE_MANAGE' | 'POLICY_MANAGE';
@@ -87,6 +87,22 @@ export interface ReportSummary {
 }
 
 export interface FaqItem { id: number; language: Language; title: string; body: string; displayOrder: number; active: boolean }
+export interface UssdSessionView {
+  id: number; sessionId: string; msisdn: string; clientName?: string; networkCode?: string; language?: string;
+  status: string; lastScreen: string; authenticated: boolean; screens: number; durationSeconds: number;
+  startedAt: string; endedAt?: string;
+}
+export interface MsisdnVisits {
+  msisdn: string; clientName?: string; sessions: number; completed: number; leftOrTimedOut: number;
+  notRegistered: number; other: number; screens: number; firstVisit: string; lastVisit: string;
+}
+export interface SessionSummary {
+  from: string; to: string; sessions: number; uniquePhones: number; screens: number;
+  byStatus: Record<string, number>;
+  byNetwork: { network: string; sessions: number; phones: number }[];
+  byDay: { day: string; sessions: number; phones: number }[];
+}
+
 export interface AuditLog { id: number; actor: string; channel: string; action: string; resource?: string; success: boolean; detail?: string; ipAddress?: string; ipCountry?: string; loggedAt: string }
 
 // ── USSD texts editor ──

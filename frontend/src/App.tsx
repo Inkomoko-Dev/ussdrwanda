@@ -9,6 +9,7 @@ import Countries from './pages/Countries';
 import CountrySetup from './pages/CountrySetup';
 import Customers from './pages/Customers';
 import Dashboard from './pages/Dashboard';
+import Sessions from './pages/Sessions';
 import HelpContent from './pages/HelpContent';
 import Languages from './pages/Languages';
 import Login from './pages/Login';
@@ -35,6 +36,7 @@ export default function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<Navigate to={home} replace />} />
           <Route path="/dashboard" element={guard(can('DASHBOARD_VIEW'), <Dashboard />)} />
+          <Route path="/sessions" element={guard(can('SESSION_VIEW'), <Sessions />)} />
           <Route path="/customers" element={guard(can('CUSTOMER_VIEW', 'CUSTOMER_ONBOARD'), <Customers />)} />
           <Route path="/repayments" element={guard(can('REPAYMENT_VIEW'), <Repayments />)} />
           <Route path="/approvals" element={guard(can('RECON_APPROVE', 'RECON_PROPOSE'), <Approvals />)} />
