@@ -182,21 +182,19 @@ export default function Layout() {
       <aside
         className={`portal-sidebar ${mobileNavOpen ? 'portal-sidebar-open' : ''}`}
       >
-<div className="portal-brand">
-  <div className="portal-brand-top">
-    <div className="portal-logo-container">
-      <Logo height={42} />
-    </div>
+        <div className="portal-brand">
+          <div className="portal-brand-top">
+            <Logo height={42} />
 
-    <button
-      type="button"
-      className="portal-mobile-close"
-      aria-label="Close navigation"
-      onClick={closeMobileNav}
-    >
-      <X size={20} />
-    </button>
-  </div>
+            <button
+              type="button"
+              className="portal-mobile-close"
+              aria-label="Close navigation"
+              onClick={closeMobileNav}
+            >
+              <X size={20} />
+            </button>
+          </div>
 
           <div className="portal-brand-caption">
             <span className="portal-brand-dot" />
