@@ -1,0 +1,590 @@
+
+/* =========================================================
+   USSD SESSIONS PAGE
+   Scoped styles - does not modify shared components
+   ========================================================= */
+
+.sessions-page {
+  width: 100%;
+  min-width: 0;
+  color: #1e293b;
+}
+
+/* DATE FILTERS */
+
+.sessions-date-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sessions-date-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #64748b;
+}
+
+.sessions-date-field label {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sessions-date-field input {
+  width: 125px;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #334155;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+/* SUMMARY CARDS */
+
+.sessions-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.sessions-stat-card {
+  min-width: 0;
+  min-height: 145px;
+  padding: 15px;
+  background: #ffffff;
+  border: 1px solid #edf0f5;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.035);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sessions-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.07);
+}
+
+.sessions-stat-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 11px;
+  border-radius: 9px;
+}
+
+.sessions-stat-label {
+  margin-bottom: 5px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.sessions-stat-value {
+  color: #00205f;
+  font-size: clamp(19px, 1.5vw, 24px);
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+  overflow-wrap: anywhere;
+}
+
+.sessions-stat-hint {
+  margin-top: 6px;
+  color: #94a3b8;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+/* MAIN CONTENT */
+
+.sessions-content {
+  min-width: 0;
+}
+
+.sessions-card-content {
+  min-width: 0;
+}
+
+.sessions-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.sessions-section-heading h2 {
+  margin: 0;
+  color: #00205f;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+.sessions-section-heading p {
+  margin: 5px 0 0;
+  color: #8792a4;
+  font-size: 12px;
+}
+
+.sessions-export-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid #dce4f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #00205f;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sessions-export-button:hover:not(:disabled) {
+  border-color: #00205f;
+  background: #f4f7fc;
+}
+
+.sessions-export-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* TABS */
+
+.sessions-tabs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 18px;
+  padding: 5px;
+  overflow-x: auto;
+  border-bottom: 1px solid #e9edf4;
+}
+
+.sessions-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 37px;
+  padding: 0 14px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 7px 7px 0 0;
+  background: transparent;
+  color: #718096;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sessions-tabs button:hover {
+  background: #f4f7fc;
+  color: #00205f;
+}
+
+.sessions-tabs button.active {
+  background: #edf3ff;
+  color: #00205f;
+  box-shadow: inset 0 -2px 0 #3659d9;
+}
+
+/* FILTER TOOLBAR */
+
+.sessions-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.sessions-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: min(340px, 100%);
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #94a3b8;
+}
+
+.sessions-search:focus-within {
+  border-color: #3659d9;
+  box-shadow: 0 0 0 3px rgba(54, 89, 217, 0.08);
+}
+
+.sessions-search input {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #334155;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.sessions-search input::placeholder {
+  color: #a0aaba;
+}
+
+.sessions-filters select {
+  min-height: 38px;
+  min-width: 155px;
+  padding: 0 30px 0 11px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  outline: none;
+  background: #ffffff;
+  color: #475569;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* TABLES */
+
+.sessions-table-container {
+  width: 100%;
+  min-width: 0;
+}
+
+.sessions-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #edf0f5;
+  border-radius: 9px;
+}
+
+.sessions-table {
+  width: 100%;
+  min-width: 950px;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #ffffff;
+  font-size: 12px;
+}
+
+.sessions-table thead th {
+  padding: 12px 13px;
+  background: #f7f9fc;
+  border-bottom: 1px solid #e9edf4;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.45px;
+  white-space: nowrap;
+}
+
+.sessions-table tbody td {
+  padding: 12px 13px;
+  border-bottom: 1px solid #f0f2f6;
+  color: #475569;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.sessions-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.sessions-table tbody tr:hover {
+  background: #fafcff;
+}
+
+.sessions-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sessions-table tbody td strong {
+  color: #1e293b;
+  font-weight: 700;
+}
+
+.sessions-phone button {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #3659d9;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.sessions-phone button:hover {
+  color: #00205f;
+  text-decoration: underline;
+}
+
+.sessions-mono {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 11px;
+}
+
+.sessions-sub {
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+/* DAILY AND NETWORK PANELS */
+
+.sessions-analytics-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.sessions-analytics-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.sessions-data-panel {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid #edf0f5;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.sessions-data-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 13px;
+  color: #3659d9;
+}
+
+.sessions-data-heading h3 {
+  margin: 0;
+  color: #00205f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sessions-data-panel .sessions-table {
+  min-width: 400px;
+}
+
+.sessions-data-panel .sessions-table thead th,
+.sessions-data-panel .sessions-table tbody td {
+  padding: 11px 10px;
+}
+
+/* EMPTY STATES */
+
+.sessions-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 155px;
+  padding: 22px;
+  text-align: center;
+}
+
+.sessions-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 4px;
+  border-radius: 12px;
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.sessions-empty strong {
+  color: #334155;
+  font-size: 13px;
+}
+
+.sessions-empty span {
+  max-width: 340px;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* LOADING */
+
+.sessions-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 130px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.sessions-spin {
+  animation: sessions-spin 1s linear infinite;
+}
+
+@keyframes sessions-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* FOOTER */
+
+.sessions-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 10px 2px;
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.sessions-footer span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* RESPONSIVE */
+
+@media (max-width: 1250px) {
+  .sessions-stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .sessions-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .sessions-date-toolbar {
+    justify-content: flex-start;
+  }
+
+  .sessions-date-field input {
+    width: 115px;
+  }
+
+  .sessions-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .sessions-stat-card {
+    min-height: 135px;
+    padding: 13px;
+  }
+
+  .sessions-section-heading {
+    align-items: flex-start;
+  }
+
+  .sessions-tabs {
+    margin-right: -4px;
+  }
+
+  .sessions-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 480px) {
+  .sessions-date-toolbar {
+    width: 100%;
+  }
+
+  .sessions-date-field {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .sessions-date-field input {
+    width: 100%;
+    font-size: 11px;
+  }
+
+  .sessions-stats-grid {
+    gap: 8px;
+  }
+
+  .sessions-stat-card {
+    min-height: 130px;
+    padding: 11px;
+  }
+
+  .sessions-stat-value {
+    font-size: 20px;
+  }
+
+  .sessions-stat-label {
+    font-size: 10px;
+  }
+
+  .sessions-stat-hint {
+    font-size: 9px;
+  }
+
+  .sessions-section-heading {
+    flex-direction: column;
+  }
+
+  .sessions-export-button {
+    width: 100%;
+  }
+
+  .sessions-filters {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sessions-search {
+    width: 100%;
+  }
+
+  .sessions-filters select {
+    width: 100%;
+  }
+
+  .sessions-data-panel {
+    padding: 10px;
+  }
+}
