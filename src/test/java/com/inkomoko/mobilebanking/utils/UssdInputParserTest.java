@@ -20,11 +20,24 @@ class UssdInputParserTest {
     }
 
     @Test
-    void futureShortcode311() {
+    void shortcode311() {
         String code = UssdInputParser.normalizeServiceCode("RW|MTN|311");
         assertEquals("311", code);
         assertEquals(List.of(), UssdInputParser.segments("*311#", code));
+        assertEquals(List.of(), UssdInputParser.segments("311", code)); // Comviva first dial
+        assertEquals(List.of("1"), UssdInputParser.segments("311*1", code));
         assertEquals(List.of("1", "2"), UssdInputParser.segments("*311*1*2#", code));
+        assertEquals(List.of("1"), UssdInputParser.segments("1", code)); // ongoing Comviva step
+    }
+
+    @Test
+    void startsWithServiceCode() {
+        assertEquals(true, UssdInputParser.startsWithServiceCode("311", "311"));
+        assertEquals(true, UssdInputParser.startsWithServiceCode("*311#", "311"));
+        assertEquals(true, UssdInputParser.startsWithServiceCode("*662*105#", "662*105"));
+        assertEquals(true, UssdInputParser.startsWithServiceCode("662*105*1", "662*105"));
+        assertEquals(false, UssdInputParser.startsWithServiceCode("1", "311"));
+        assertEquals(false, UssdInputParser.startsWithServiceCode("", "311"));
     }
 
     @Test

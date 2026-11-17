@@ -64,6 +64,12 @@ public class PhoneUtils {
         };
     }
 
+    /** Gateway-style network label from the MSISDN, e.g. {@code RW|MTN}, when the telecom omits networkCode. */
+    public static String networkCodeFromMsisdn(String purifiedMsisdn) {
+        ETelecom telecom = detectTelecom(null, purifiedMsisdn);
+        return telecom == null ? "RW|UNKNOWN" : "RW|" + telecom.name();
+    }
+
     /** 250788123456 → 0788***456 */
     public static String mask(String phone) {
         if (phone == null || phone.length() < 9) return phone;

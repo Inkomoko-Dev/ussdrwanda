@@ -3,6 +3,7 @@ package com.inkomoko.mobilebanking.services;
 import com.inkomoko.mobilebanking.enums.EApprovalStatus;
 import com.inkomoko.mobilebanking.enums.ESessionEndReason;
 import com.inkomoko.mobilebanking.models.dto.ReportSummary;
+import com.inkomoko.mobilebanking.models.dto.ReportSummary.DayCount;
 import com.inkomoko.mobilebanking.repositories.AuditLogRepository;
 import com.inkomoko.mobilebanking.repositories.ClientPinRepository;
 import com.inkomoko.mobilebanking.repositories.ReconciliationActionRepository;
@@ -12,8 +13,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.sql.Date;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /** Figures for the operational reporting dashboard (proposal §3.7). */
@@ -46,6 +50,10 @@ public class ReportService {
             amounts.put(status, row[2] instanceof BigDecimal b ? b : new BigDecimal(String.valueOf(row[2])));
         }
 
+        List<DayCount> byDay = sessionRepo.countByDay(from, to).stream()
+                .map(r -> new DayCount(toLocalDate(r[0]), ((Number) r[1]).longValue(), ((Number) r[2]).longValue()))
+                .toList();
+
         return new ReportSummary(from, to, sessions, authenticated, completed, abandoned, consentDeclined,
                 notRegistered,
                 pct(completed, sessions), pct(abandoned, sessions),
@@ -53,10 +61,17 @@ public class ReportService {
                 auditRepo.countByActionAndLoggedAtBetween("LOGIN_FAILED", from, to),
                 pinRepo.countByLockedAtBetween(from, to),
                 counts, amounts,
-                reconRepo.findByStatusOrderByCreatedAtAsc(EApprovalStatus.PENDING_APPROVAL).size());
+                reconRepo.findByStatusOrderByCreatedAtAsc(EApprovalStatus.PENDING_APPROVAL).size(),
+                byDay);
     }
 
     private static double pct(long part, long total) {
         return total == 0 ? 0 : Math.round(part * 1000.0 / total) / 10.0;
+    }
+
+    private static LocalDate toLocalDate(Object o) {
+        if (o instanceof LocalDate d) return d;
+        if (o instanceof Date d) return d.toLocalDate();
+        return LocalDate.parse(o.toString().substring(0, 10));
     }
 }

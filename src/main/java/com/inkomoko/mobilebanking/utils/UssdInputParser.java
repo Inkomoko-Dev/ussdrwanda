@@ -5,15 +5,21 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Extracts user answers from the gateway's {@code userInput}.
+ * Extracts user answers from the gateway's {@code userInput} / Comviva {@code input}.
  *
- * The FDI gateway sends the full dial string, with every answer so far appended:
+ * FDI sends the full dial string, with every answer so far appended:
  *
  *   serviceCode "RW|MTN|662|105", userInput "*662*105#"      → []          (first request)
  *   serviceCode "RW|MTN|662|105", userInput "*662*105*1#"    → ["1"]
  *   serviceCode "RW|MTN|662|105", userInput "*662*105*1*1#"  → ["1", "1"]
  *
- * The service-code segments ("662*105", later "311") are removed; the last remaining segment
+ * Comviva (MTN/Airtel) often sends the shortcode alone on the first dial, without {@code *#}:
+ *
+ *   serviceCode "311", input "311"      → []
+ *   serviceCode "311", input "311*1"    → ["1"]
+ *   serviceCode "311", input "1"        → ["1"]   (ongoing session)
+ *
+ * The service-code segments are removed when they prefix the input; the last remaining segment
  * is the user's latest answer. A plain cumulative form without the code ("1*1") is also accepted.
  */
 public final class UssdInputParser {
@@ -26,7 +32,6 @@ public final class UssdInputParser {
         String raw = userInput.trim();
         if (raw.isEmpty()) return List.of();
 
-        boolean dialString = raw.startsWith("*") || raw.endsWith("#");
         String s = raw;
         while (s.startsWith("*")) s = s.substring(1);
         if (s.endsWith("#")) s = s.substring(0, s.length() - 1);
@@ -36,13 +41,29 @@ public final class UssdInputParser {
             if (!p.isEmpty()) parts.add(p);
         }
 
-        if (dialString && serviceCode != null && !serviceCode.isBlank()) {
+        // Strip leading shortcode segments whether the gateway sent *311# or plain 311.
+        if (serviceCode != null && !serviceCode.isBlank()) {
             List<String> code = codeSegments(serviceCode);
             if (!code.isEmpty() && parts.size() >= code.size() && parts.subList(0, code.size()).equals(code)) {
                 parts = new ArrayList<>(parts.subList(code.size(), parts.size()));
             }
         }
         return parts;
+    }
+
+    /** True when {@code input} begins with the configured shortcode (e.g. {@code 311} or {@code *662*105#}). */
+    public static boolean startsWithServiceCode(String input, String serviceCode) {
+        if (input == null || input.isBlank() || serviceCode == null || serviceCode.isBlank()) return false;
+        List<String> code = codeSegments(serviceCode);
+        if (code.isEmpty()) return false;
+        String s = input.trim();
+        while (s.startsWith("*")) s = s.substring(1);
+        if (s.endsWith("#")) s = s.substring(0, s.length() - 1);
+        List<String> parts = new ArrayList<>();
+        for (String p : s.split("\\*", -1)) {
+            if (!p.isEmpty()) parts.add(p);
+        }
+        return parts.size() >= code.size() && parts.subList(0, code.size()).equals(code);
     }
 
     /**

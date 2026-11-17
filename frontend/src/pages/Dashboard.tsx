@@ -239,6 +239,28 @@ export default function Dashboard() {
 
   const pendingApprovals = data?.pendingReconciliationActions ?? 0;
 
+  /** One point per calendar day in the selected range (zeros filled so the line is continuous). */
+  const activitySeries = useMemo(() => {
+    const byDay = new Map((data?.byDay ?? []).map((d) => [d.day.slice(0, 10), d]));
+    const points: { date: string; label: string; sessions: number; phones: number }[] = [];
+    const cursor = new Date(`${from}T00:00:00`);
+    const end = new Date(`${to}T00:00:00`);
+    while (cursor <= end) {
+      const key = iso(cursor);
+      const row = byDay.get(key);
+      points.push({
+        date: key,
+        label: cursor.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        sessions: row?.sessions ?? 0,
+        phones: row?.phones ?? 0,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return points;
+  }, [data, from, to]);
+
+  const hasActivity = activitySeries.some((p) => p.sessions > 0);
+
   return (
     <div className="dashboard-page">
       <PageHead
@@ -417,55 +439,73 @@ export default function Dashboard() {
                 }
               >
                 <div className="db-line-chart">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={[]}
-                      margin={{
-                        top: 12,
-                        right: 10,
-                        left: -15,
-                        bottom: 4,
-                      }}
-                    >
-                      <CartesianGrid
-                        stroke="#e8edf5"
-                        strokeDasharray="3 3"
-                        vertical
-                      />
-                      <XAxis
-                        dataKey="date"
-                        axisLine={false}
-                        tickLine={false}
-                        tick={{ fill: '#64748b', fontSize: 11 }}
-                      />
-                      <YAxis
-                        axisLine={false}
-                        tickLine={false}
-                        tick={{ fill: '#64748b', fontSize: 11 }}
-                      />
-                      <Tooltip />
-                      <Line
-                        type="monotone"
-                        dataKey="sessions"
-                        stroke="#2563eb"
-                        strokeWidth={2.5}
-                        dot={{ r: 3, fill: '#2563eb' }}
-                        activeDot={{ r: 6 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-
-                  <div className="db-chart-empty">
-                    <Activity size={22} />
-                    <strong>
-                      Daily activity data is not available yet
-                    </strong>
-                    {/* <span>
-                      The current summary API returns total sessions only.
-                      A daily time-series endpoint is needed to display this
-                      chart.
-                    </span> */}
-                  </div>
+                  {hasActivity ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={activitySeries}
+                        margin={{
+                          top: 12,
+                          right: 10,
+                          left: -15,
+                          bottom: 4,
+                        }}
+                      >
+                        <CartesianGrid
+                          stroke="#e8edf5"
+                          strokeDasharray="3 3"
+                          vertical
+                        />
+                        <XAxis
+                          dataKey="label"
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fill: '#64748b', fontSize: 11 }}
+                          interval="preserveStartEnd"
+                          minTickGap={28}
+                        />
+                        <YAxis
+                          allowDecimals={false}
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fill: '#64748b', fontSize: 11 }}
+                          width={36}
+                        />
+                        <Tooltip
+                          content={({ active, payload, label }) => {
+                            if (!active || !payload?.length) return null;
+                            const point = payload[0]?.payload as { date?: string; sessions?: number; phones?: number } | undefined;
+                            const dateLabel = point?.date
+                              ? new Date(`${point.date}T00:00:00`).toLocaleDateString(undefined, {
+                                  weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                                })
+                              : String(label ?? '');
+                            return (
+                              <div className="db-chart-tooltip">
+                                <strong>{dateLabel}</strong>
+                                <span>{formatNumber(point?.sessions ?? 0)} sessions</span>
+                                <span>{formatNumber(point?.phones ?? 0)} unique phones</span>
+                              </div>
+                            );
+                          }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="sessions"
+                          name="sessions"
+                          stroke="#2563eb"
+                          strokeWidth={2.5}
+                          dot={{ r: 3, fill: '#2563eb' }}
+                          activeDot={{ r: 6 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="db-chart-empty">
+                      <Activity size={22} />
+                      <strong>No USSD sessions in this period</strong>
+                      <span>Dial activity will appear here once customers use the USSD code.</span>
+                    </div>
+                  )}
                 </div>
               </Panel>
             </div>

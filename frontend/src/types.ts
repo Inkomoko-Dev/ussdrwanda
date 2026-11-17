@@ -84,6 +84,7 @@ export interface ReportSummary {
   requests: number; avgResponseMs: number; loginFailures: number; pinLocks: number;
   repaymentCountByStatus: Record<string, number>; repaymentAmountByStatus: Record<string, number>;
   pendingReconciliationActions: number;
+  byDay: { day: string; sessions: number; phones: number }[];
 }
 
 export interface FaqItem { id: number; language: Language; title: string; body: string; displayOrder: number; active: boolean }

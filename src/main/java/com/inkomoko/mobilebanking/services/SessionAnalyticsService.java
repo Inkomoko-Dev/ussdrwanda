@@ -1,6 +1,5 @@
 package com.inkomoko.mobilebanking.services;
 
-import com.inkomoko.mobilebanking.controllers.UssdController;
 import com.inkomoko.mobilebanking.enums.ESessionEndReason;
 import com.inkomoko.mobilebanking.models.UssdSession;
 import com.inkomoko.mobilebanking.repositories.UssdSessionRepository;
@@ -130,10 +129,10 @@ public class SessionAnalyticsService {
     static String lastScreen(UssdSession s) {
         int level = s.getLevel() == null ? 0 : s.getLevel();
         if (level == 0) return "Start";
-        if (level == UssdController.LEVEL_LANGUAGE) return "Language";
-        if (level == UssdController.LEVEL_CONSENT) return "Terms & conditions";
-        if (level == UssdController.LEVEL_AUTH) {
-            return UssdController.STEP_PIN_SETUP.equals(s.getStep()) || UssdController.STEP_PIN_CONFIRM.equals(s.getStep())
+        if (level == UssdFlowService.LEVEL_LANGUAGE) return "Language";
+        if (level == UssdFlowService.LEVEL_CONSENT) return "Terms & conditions";
+        if (level == UssdFlowService.LEVEL_AUTH) {
+            return UssdFlowService.STEP_PIN_SETUP.equals(s.getStep()) || UssdFlowService.STEP_PIN_CONFIRM.equals(s.getStep())
                     ? "PIN setup" : "PIN entry";
         }
         if (level == CommonMenus.LEVEL_MAIN_MENU || s.getService() == null) return "Main menu";
