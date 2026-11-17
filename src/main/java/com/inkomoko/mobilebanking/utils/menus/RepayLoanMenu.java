@@ -47,6 +47,7 @@ public class RepayLoanMenu {
     private final com.inkomoko.mobilebanking.services.CountryService countries;
 
     public String processMenu(UssdSession s, String input) {
+        if (!countries.repaymentEnabled()) return common.backToMain(s);
         String l = s.getLanguage();
         try {
             if (s.getStep() == null) return start(s);
@@ -68,6 +69,7 @@ public class RepayLoanMenu {
 
     /** Opens the pay screen for a loan already chosen (for example from next due date). */
     public String showOffer(UssdSession s, LoanSummaryDto loan) {
+        if (!countries.repaymentEnabled()) return common.backToMain(s);
         return offer(s, loan);
     }
 

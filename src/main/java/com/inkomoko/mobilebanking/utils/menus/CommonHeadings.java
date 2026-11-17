@@ -2,6 +2,7 @@ package com.inkomoko.mobilebanking.utils.menus;
 
 import com.inkomoko.mobilebanking.enums.ELoanStatus;
 import com.inkomoko.mobilebanking.enums.ECharset;
+import com.inkomoko.mobilebanking.services.CountryService;
 import com.inkomoko.mobilebanking.services.LanguageService;
 import com.inkomoko.mobilebanking.services.MessageService;
 import com.inkomoko.mobilebanking.utils.i18n.MessageBundle;
@@ -26,6 +27,7 @@ public class CommonHeadings {
 
     private final MessageService messages;
     private final LanguageService languageService;
+    private final CountryService countries;
 
     /** Shortcut for any key with named parameters. */
     public String text(String l, String key, Map<String, ?> params) {
@@ -96,7 +98,7 @@ public class CommonHeadings {
     }
 
     public String mainMenu(String l) {
-        return messages.text(l, "menu.main");
+        return messages.text(l, countries.repaymentEnabled() ? "menu.main" : "menu.main.no_repay");
     }
 
     // ── Navigation / generic ──────────────────────────────────────────────

@@ -45,14 +45,23 @@ export default function CountryForm({ value, onChange, disabled }: {
         <Field label="Helpline" help="Phone number shown to clients, e.g. +250 788 123 456">
           <input value={value.helpline ?? ''} placeholder="+250 788 123 456" onChange={(e) => set('helpline', e.target.value)} />
         </Field>
+        <Field label="USSD loan repayment" help="When off, customers do not see Repay Loan on USSD (main menu, loan submenu, next due).">
+          <label className="check">
+            <input type="checkbox" checked={!!value.repaymentEnabled}
+              onChange={(e) => set('repaymentEnabled', e.target.checked)} />
+            Enable Mobile Money repayment on USSD
+          </label>
+        </Field>
         <Field label={`Minimum repayment (${value.currency})`}>
-          <input type="number" min={1} value={value.minRepayment} onChange={(e) => set('minRepayment', Number(e.target.value))} />
+          <input type="number" min={1} value={value.minRepayment} disabled={!value.repaymentEnabled}
+            onChange={(e) => set('minRepayment', Number(e.target.value))} />
         </Field>
         <Field label={`Maximum repayment (${value.currency})`}>
-          <input type="number" min={1} value={value.maxRepayment} onChange={(e) => set('maxRepayment', Number(e.target.value))} />
+          <input type="number" min={1} value={value.maxRepayment} disabled={!value.repaymentEnabled}
+            onChange={(e) => set('maxRepayment', Number(e.target.value))} />
         </Field>
         <Field label="Mobile networks" help="Comma-separated, e.g. MTN, AIRTEL">
-          <input value={value.mobileNetworks.join(', ')}
+          <input value={value.mobileNetworks.join(', ')} disabled={!value.repaymentEnabled}
             onChange={(e) => set('mobileNetworks', e.target.value.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean))} />
         </Field>
       </div>

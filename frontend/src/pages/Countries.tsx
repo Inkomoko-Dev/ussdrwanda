@@ -25,7 +25,7 @@ export default function Countries() {
       <Card>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Country</th><th>USSD</th><th>Dial code</th><th>Currency</th><th>Languages</th><th>Repayment limits</th><th></th></tr></thead>
+            <thead><tr><th>Country</th><th>USSD</th><th>Dial code</th><th>Currency</th><th>Languages</th><th>USSD repayment</th><th>Repayment limits</th><th></th></tr></thead>
             <tbody>
               {data?.map((c) => (
                 <tr key={c.code}>
@@ -33,7 +33,10 @@ export default function Countries() {
                   <td className="mono">{c.ussdServiceCode ? `*${c.ussdServiceCode}#` : '—'}</td>
                   <td>+{c.dialCode}</td><td>{c.currency}</td>
                   <td>{c.languages.map(label).join(', ')}</td>
-                  <td>{fmtMoney(c.minRepayment)} – {fmtMoney(c.maxRepayment)}</td>
+                  <td>{c.repaymentEnabled
+                    ? <span className="badge ok">Enabled</span>
+                    : <span className="badge neutral">Disabled</span>}</td>
+                  <td>{c.repaymentEnabled ? `${fmtMoney(c.minRepayment)} – ${fmtMoney(c.maxRepayment)}` : '—'}</td>
                   <td>{can('COUNTRY_MANAGE') && <div className="actions">
                     <button className="btn ghost small" onClick={() => setEdit({ ...c })}>Edit</button>
                     {!c.active && <button className="btn secondary small" onClick={() => activate(c)}>Activate</button>}

@@ -3,6 +3,7 @@ package com.inkomoko.mobilebanking.utils.menus;
 import com.inkomoko.mobilebanking.enums.ESessionEndReason;
 import com.inkomoko.mobilebanking.models.UssdSession;
 import com.inkomoko.mobilebanking.models.dto.LoanSummaryDto;
+import com.inkomoko.mobilebanking.services.CountryService;
 import com.inkomoko.mobilebanking.services.integration.FineractService;
 import com.inkomoko.mobilebanking.utils.DateUtility;
 import com.inkomoko.mobilebanking.utils.GeneralMethods;
@@ -30,6 +31,7 @@ public class AccountInfoMenu {
 
     private final CommonMenus common;
     private final CommonHeadings headings;
+    private final CountryService countries;
     private final FineractService fineract;
     private final MiniStatementMenu miniStatementMenu;
     private final RepayLoanMenu repayLoanMenu;
@@ -99,12 +101,15 @@ public class AccountInfoMenu {
         s.setStep(STEP_DUE);
         String due = DateUtility.screenDate(loan.nextDueDate());
         String amount = loan.nextInstallment() == null ? "-" : GeneralMethods.rwf(loan.nextInstallment());
-        return headings.text(s.getLanguage(), "account.due", Map.of("account", loan.accountNo(), "due", due, "amount", amount))
+        String key = countries.repaymentEnabled() ? "account.due" : "account.due.no_repay";
+        return headings.text(s.getLanguage(), key, Map.of("account", loan.accountNo(), "due", due, "amount", amount))
                 + headings.back(s.getLanguage());
     }
 
     private String repay(UssdSession s, String input) {
-        if (!"1".equals(input)) return headings.invalidChoice(s.getLanguage()) + due(s, fineract.getLoanDetails(s.getLoanId()));
+        if (!countries.repaymentEnabled() || !"1".equals(input)) {
+            return headings.invalidChoice(s.getLanguage()) + due(s, fineract.getLoanDetails(s.getLoanId()));
+        }
         s.setService(RepayLoanMenu.SERVICE);
         return repayLoanMenu.showOffer(s, fineract.getLoanDetails(s.getLoanId()));
     }

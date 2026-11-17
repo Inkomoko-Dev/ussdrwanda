@@ -29,7 +29,7 @@ public final class PortalDtos {
     public record LoginResponse(String token, boolean mustChangePassword, boolean passwordExpired) {
     }
 
-    public record CountrySummary(String code, String name, String currency) {
+    public record CountrySummary(String code, String name, String currency, boolean repaymentEnabled) {
     }
 
     /** countrySetupRequired: no active country yet — a Super Administrator must choose and configure one. */
@@ -99,7 +99,7 @@ public final class PortalDtos {
     public record CountryView(String code, String name, String dialCode, Integer nationalNumberLength, String currency,
                               String timezone, List<String> languages, List<String> mobileNetworks,
                               String helpline, String ussdServiceCode, BigDecimal minRepayment, BigDecimal maxRepayment,
-                              boolean active) {
+                              boolean repaymentEnabled, boolean active) {
     }
 
     public record CountryRequest(@Size(max = 80) String name,
@@ -112,7 +112,8 @@ public final class PortalDtos {
                                  @Size(max = 40) String helpline,
                                  @Size(max = 20) String ussdServiceCode,
                                  @Positive BigDecimal minRepayment,
-                                 @Positive BigDecimal maxRepayment) {
+                                 @Positive BigDecimal maxRepayment,
+                                 Boolean repaymentEnabled) {
     }
 
     // ── Customers ────────────────────────────────────────────────────────

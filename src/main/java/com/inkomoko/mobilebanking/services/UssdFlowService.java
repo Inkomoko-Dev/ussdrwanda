@@ -459,15 +459,25 @@ public class UssdFlowService {
     private String handleMainMenu(UssdSession s, String input) {
         String l = s.getLanguage();
         if (!s.isAuthenticated()) return common.unavailable(s);
-        String service = switch (input) {
-            case "1" -> LoanMenu.SERVICE;
-            case "2" -> RepayLoanMenu.SERVICE;
-            case "3" -> AccountInfoMenu.SERVICE;
-            case "4" -> SettingsMenu.SERVICE;
-            case "5" -> HelpMenu.SERVICE;
-            case "0" -> "exit";
-            default -> null;
-        };
+        boolean repayOn = countries.repaymentEnabled();
+        String service = repayOn
+                ? switch (input) {
+                    case "1" -> LoanMenu.SERVICE;
+                    case "2" -> RepayLoanMenu.SERVICE;
+                    case "3" -> AccountInfoMenu.SERVICE;
+                    case "4" -> SettingsMenu.SERVICE;
+                    case "5" -> HelpMenu.SERVICE;
+                    case "0" -> "exit";
+                    default -> null;
+                }
+                : switch (input) {
+                    case "1" -> LoanMenu.SERVICE;
+                    case "2" -> AccountInfoMenu.SERVICE;
+                    case "3" -> SettingsMenu.SERVICE;
+                    case "4" -> HelpMenu.SERVICE;
+                    case "0" -> "exit";
+                    default -> null;
+                };
         if ("exit".equals(service)) {
             return common.endWith(s, ESessionEndReason.USER_EXIT, headings.thankYou(l));
         }

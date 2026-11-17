@@ -38,6 +38,8 @@ public class CountryConfig {
     private String ussdServiceCode;
     private BigDecimal minRepayment;
     private BigDecimal maxRepayment;
+    /** When false, USSD does not offer loan repayment (main menu, loan submenu, next-due shortcut). */
+    private boolean repaymentEnabled;
     private boolean active;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

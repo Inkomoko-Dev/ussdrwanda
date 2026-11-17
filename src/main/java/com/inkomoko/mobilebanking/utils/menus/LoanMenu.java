@@ -1,10 +1,11 @@
 package com.inkomoko.mobilebanking.utils.menus;
 
 import com.inkomoko.mobilebanking.models.UssdSession;
+import com.inkomoko.mobilebanking.services.CountryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-/** 1. Loan: direct repayment, or the mini statement for a loan. */
+/** 1. Loan: direct repayment (when enabled), or the mini statement for a loan. */
 @Component
 @RequiredArgsConstructor
 public class LoanMenu {
@@ -14,12 +15,19 @@ public class LoanMenu {
 
     private final CommonMenus common;
     private final CommonHeadings headings;
+    private final CountryService countries;
     private final RepayLoanMenu repayLoanMenu;
     private final MiniStatementMenu miniStatementMenu;
 
     public String processMenu(UssdSession s, String input) {
         if (s.getStep() == null) return menu(s);
         if ("0".equals(input)) return common.backToMain(s);
+        if (!countries.repaymentEnabled()) {
+            return switch (input) {
+                case "1" -> openStatement(s);
+                default -> headings.invalidChoice(s.getLanguage()) + menu(s);
+            };
+        }
         return switch (input) {
             case "1" -> openRepay(s);
             case "2" -> openStatement(s);
@@ -29,7 +37,8 @@ public class LoanMenu {
 
     private String menu(UssdSession s) {
         s.setStep(STEP_MENU);
-        return headings.text(s.getLanguage(), "menu.loan") + headings.back(s.getLanguage());
+        String key = countries.repaymentEnabled() ? "menu.loan" : "menu.loan.no_repay";
+        return headings.text(s.getLanguage(), key) + headings.back(s.getLanguage());
     }
 
     private String openRepay(UssdSession s) {

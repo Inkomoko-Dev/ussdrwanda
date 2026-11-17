@@ -33,7 +33,9 @@ export interface UserView {
 
 export interface Me {
   user: UserView; privileges: Privilege[]; mustChangePassword: boolean; passwordExpired: boolean;
-  ussdServiceCode: string; country?: { code: string; name: string; currency: string }; countrySetupRequired: boolean;
+  ussdServiceCode: string;
+  country?: { code: string; name: string; currency: string; repaymentEnabled: boolean };
+  countrySetupRequired: boolean;
   passwordPolicy: PasswordPolicy;
 }
 
@@ -43,6 +45,7 @@ export interface Country {
   code: string; name: string; dialCode: string; nationalNumberLength: number; currency: string; timezone: string;
   languages: Language[]; mobileNetworks: string[]; helpline?: string; ussdServiceCode?: string;
   minRepayment: number; maxRepayment: number;
+  repaymentEnabled: boolean;
   active: boolean;
 }
 

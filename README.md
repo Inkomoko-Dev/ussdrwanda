@@ -172,8 +172,8 @@ Useful areas for developers:
 
 - **Dashboard / USSD sessions** — volume, outcomes, visits per phone (billing)
 - **Customers** — search, optional SMS invite, PIN reset/unlock
-- **Repayments / Approvals** — maker–checker reconciliation
-- **USSD & SMS texts / Languages / Countries** — live wording without a release
+- **Repayments / Approvals** — maker–checker reconciliation (USSD repay itself is optional; toggle under **Countries**)
+- **USSD & SMS texts / Languages / Countries** — live wording, shortcode, and **Enable Mobile Money repayment on USSD**
 - **Users / Roles / Audit**
 
 Privileges live in `enums/EPrivilege`. Super Admin gets every privilege automatically.

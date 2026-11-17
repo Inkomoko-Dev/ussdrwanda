@@ -75,6 +75,11 @@ public class CountryService {
         return active().map(CountryConfig::getMaxRepayment).orElse(props.getRepayment().getMaxAmount());
     }
 
+    /** Whether USSD offers Mobile Money loan repayment for the active country. Off by default. */
+    public boolean repaymentEnabled() {
+        return active().map(CountryConfig::isRepaymentEnabled).orElse(false);
+    }
+
     public String currency() {
         return active().map(CountryConfig::getCurrency).orElse(props.getRepayment().getCurrency());
     }
@@ -154,6 +159,7 @@ public class CountryService {
                 && c.getMinRepayment().compareTo(c.getMaxRepayment()) > 0) {
             throw new IllegalArgumentException("Minimum repayment cannot exceed the maximum");
         }
+        if (r.repaymentEnabled() != null) c.setRepaymentEnabled(r.repaymentEnabled());
         c.setUpdatedAt(DateUtility.nowKigali());
     }
 
@@ -167,6 +173,6 @@ public class CountryService {
                 : Arrays.stream(c.getMobileNetworks().split(",")).map(String::trim).toList();
         return new CountryView(c.getCode(), c.getName(), c.getDialCode(), c.getNationalNumberLength(), c.getCurrency(),
                 c.getTimezone(), c.languageList(), networks, c.getHelpline(), c.getUssdServiceCode(),
-                c.getMinRepayment(), c.getMaxRepayment(), c.isActive());
+                c.getMinRepayment(), c.getMaxRepayment(), c.isRepaymentEnabled(), c.isActive());
     }
 }

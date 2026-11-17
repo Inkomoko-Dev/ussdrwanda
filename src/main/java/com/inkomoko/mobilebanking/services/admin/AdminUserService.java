@@ -96,7 +96,8 @@ public class AdminUserService {
         List<EPrivilege> privileges = principal.restricted() ? List.of()
                 : u.getRole().effectivePrivileges().stream().sorted().toList();
         CountrySummary country = countryService.active()
-                .map(c -> new CountrySummary(c.getCode(), c.getName(), c.getCurrency())).orElse(null);
+                .map(c -> new CountrySummary(c.getCode(), c.getName(), c.getCurrency(), c.isRepaymentEnabled()))
+                .orElse(null);
         return new MeResponse(view(u), privileges, u.isMustChangePassword(), policy.isExpired(u),
                 countryService.serviceCode(), country, country == null, policy.view());
     }

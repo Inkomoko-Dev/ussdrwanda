@@ -118,7 +118,10 @@ class UssdMessageBundleTest {
             String inv = t(l, "common.invalid") + "\n";
             assertFits(c + "invalid + consent", inv + t(l, "consent.text"));
             assertFits(c + "invalid + main menu", inv + t(l, "menu.main"));
+            assertFits(c + "invalid + main menu (no repay)", inv + t(l, "menu.main.no_repay"));
             assertFits(c + "pin created + main menu", t(l, "pin.created") + "\n" + t(l, "menu.main"));
+            assertFits(c + "loan menu (no repay)", t(l, "menu.loan.no_repay") + back(l));
+            assertFits(c + "due (no repay)", t(l, "account.due.no_repay") + back(l));
             assertFits(c + "wrong pin + enter pin", t(l, "pin.wrong") + "\n" + t(l, "pin.enter"));
             for (String err : List.of("pin.bad_format", "pin.weak", "pin.mismatch")) {
                 assertFits(c + err + " + pin setup", t(l, err) + "\n" + t(l, "pin.setup"));
