@@ -196,20 +196,44 @@ Full list: `src/main/resources/application.properties` and `.env.example`. Stagi
 
 ---
 
-## Deploy (GitLab)
+## Deploy
 
-| Branch | Pipeline | Host |
+| Environment | How | Port |
 |---|---|---|
-| `master` | `build` → `deploy` | Staging (Compose, host network, port **8093**) |
-| `main` | `build-prod` → `deploy-prod` | Production |
+| **Staging** | GitLab CI on `master` (`build` → `deploy`) | **8093** |
+| **Production** | On the server: `git pull` (or cron) then Compose **build** — no Efashe registry / CI image | **8093** |
 
-Image: `registry.gitlab.com/efashe2/efashe-wallet/inkomoko-ussd:<tag>`  
-Container: `inkomoko-ussd-service` · health: `/actuator/health` · logs: `/opt/tomcat/logs/inkomoko-ussd.log`
+Container name: `inkomoko-ussd-service` · health: `/actuator/health` · logs: `/opt/tomcat/logs/inkomoko-ussd.log`
 
-**Staging must have** `OMNICHANNEL_SECRET_STAGING` (and usually `SMS_API_KEY_STAGING` if SMS should be live).  
-**Production must have** `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`, and Omnichannel `BASE_URL` / `API_KEY` / `SECRET`. Set `USSD_SERVICE_CODE=311` when `*311#` goes live.
+### Production (build JAR on the server)
 
-Push to the branch; the runner builds the image (portal + JAR) and redeploys with Compose. You do not run `npm` on the server.
+No GitLab registry login. The Dockerfile compiles the portal + Spring Boot JAR during `docker compose … --build`.
+
+```bash
+cd /path/to/mobilebanking   # e.g. ~/ussdrwanda after git pull
+# Ensure .env has JWT_SECRET (≥32), DB_USERNAME, DB_PASSWORD, OMNICHANNEL_* …
+
+docker compose --env-file .env -f docker-compose.prod.yml up --build -d
+
+docker compose --env-file .env -f docker-compose.prod.yml ps
+docker compose --env-file .env -f docker-compose.prod.yml logs -f --tail=100
+curl -s http://127.0.0.1:8093/actuator/health
+```
+
+Cron-friendly one-liner after `git pull`:
+
+```bash
+docker compose --env-file .env -f docker-compose.prod.yml up --build -d
+```
+
+Image is tagged locally as `inkomoko-ussd:prod` (not pushed anywhere).
+
+**Production `.env` must include:** `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET` (≥ 32 chars), `OMNICHANNEL_BASE_URL`, `OMNICHANNEL_API_KEY`, `OMNICHANNEL_SECRET`. Defaults: `USSD_SERVICE_CODE=311`, `DB_HOST=10.0.0.4`.
+
+### Staging (CI/CD)
+
+Push to `master`. Runner builds/pushes the image and runs `docker-compose.staging.yml`.  
+Needs `OMNICHANNEL_SECRET_STAGING` (and `SMS_API_KEY_STAGING` if SMS should be live).
 
 ---
 

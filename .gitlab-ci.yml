@@ -3,11 +3,14 @@
 # ============================================================================
 # Mirrors the loan-service pipeline (shell executor runners):
 #   master -> build (tag: staging)     -> deploy      (tag: staging)
-#   main   -> build-prod (tag: production) -> deploy-prod (tag: production)
+#   main   -> (production is NOT deployed from this pipeline)
 #
-# - Docker BuildKit + registry inline cache, Maven cache mount in Dockerfile
-# - Deploys pre-built images with docker compose (network_mode: host)
-# - Staging uses host PostgreSQL (localhost:5432); production uses DB_HOST (default 10.0.0.4)
+# Production: on the server, git pull + 
+#   docker compose --env-file .env -f docker-compose.prod.yml up --build -d
+# (local image inkomoko-ussd:prod — no GitLab registry).
+#
+# - Staging: Docker BuildKit + registry, deploy with docker-compose.staging.yml
+# - Staging uses host PostgreSQL (localhost:5432)
 #
 # Docker Client/Daemon must support API 1.44+ (Docker 24.0+).
 # ============================================================================
@@ -140,22 +143,21 @@ build:
   retry: *retry_build
 
 # ============================================================================
-# Build (production) - main
+# Build (production) - disabled: prod builds on the server via docker-compose.prod.yml
 # ============================================================================
 build-prod:
   stage: build-prod
   tags:
     - production
-  before_script:
-    - echo "Starting Docker build (production)"
-    - docker version
-    - *docker_login
-    - docker buildx use default
   script:
-    - *build_image
+    - |
+      echo "Production is not built in CI."
+      echo "On the server: git pull && docker compose --env-file .env -f docker-compose.prod.yml up --build -d"
+      exit 0
+  rules:
+    - when: never
   only:
     - main
-  retry: *retry_build
 
 # ============================================================================
 # Deploy (staging) - master
@@ -244,71 +246,17 @@ deploy:
 # ============================================================================
 # Deploy (production) - main
 # ============================================================================
+# Production deploy is done on the host (git pull + compose --build), not from CI.
 deploy-prod:
   stage: deploy-prod
   tags:
     - production
-  before_script:
-    - echo "Preparing for production deployment"
-    - export DB_HOST="${DB_HOST:-10.0.0.4}"
-    - export DB_PORT="${DB_PORT:-5432}"
-    - export DB_NAME="${DB_NAME:-inkomoko_db}"
-    - |
-      set -e
-      require() { for v in "$@"; do eval "val=\${$v:-}"; if [ -z "$val" ]; then echo "ERROR: $v is not set (GitLab CI/CD variables)"; exit 1; fi; done; }
-      require DB_USERNAME DB_PASSWORD JWT_SECRET
-      # Core banking and payments must be real: omnichannel (default) or live; there is no demo/mock mode.
-      # FINERACT_* / PAYMENT_* (Efashe) variables are only needed when the matching mode is "live".
-      FM="${FINERACT_MODE:-omnichannel}"; PM="${PAYMENT_MODE:-omnichannel}"; SM="${SMS_MODE:-live}"
-      for pair in "FINERACT_MODE:$FM" "PAYMENT_MODE:$PM"; do
-        case "${pair#*:}" in omnichannel|live) ;; *) echo "ERROR: ${pair%%:*}=${pair#*:} in production; use omnichannel or live"; exit 1 ;; esac
-      done
-      if [ "$SM" != "live" ] && [ "${ALLOW_MOCK_SMS_IN_PRODUCTION:-false}" != "true" ]; then
-        echo "ERROR: SMS_MODE=$SM in production. Set it to live (or ALLOW_MOCK_SMS_IN_PRODUCTION=true to override)."
-        exit 1
-      fi
-      echo "USSD_SERVICE_CODE=${USSD_SERVICE_CODE:-311}"
-      echo "FINERACT_MODE=$FM PAYMENT_MODE=$PM SMS_MODE=$SM"
-      if [ "$FM" = "omnichannel" ] || [ "$PM" = "omnichannel" ]; then require OMNICHANNEL_BASE_URL OMNICHANNEL_API_KEY OMNICHANNEL_SECRET; fi
-      [ "$FM" = "live" ] && require FINERACT_BASE_URL FINERACT_USERNAME FINERACT_PASSWORD
-      [ "$PM" = "live" ] && require PAYMENT_BASE_URL PAYMENT_API_KEY PAYMENT_CALLBACK_URL PAYMENT_CALLBACK_TOKEN
-      [ "$SM" = "live" ] && require SMS_BASE_URL SMS_API_KEY
-      [ "${MAIL_MODE:-mock}" = "smtp" ] && require MAIL_HOST
-      true
-    - echo "DB=${DB_HOST}:${DB_PORT}/${DB_NAME} user=${DB_USERNAME} password=***"
-    - docker container prune -f --filter "until=24h" || true
-    - *docker_login
-    - *compose_setup
-    - |
-      echo "Checking external database connectivity..."
-      if command -v pg_isready >/dev/null 2>&1; then
-        pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" && echo "Database is accessible" \
-          || echo "Warning: pg_isready could not verify the database, continuing..."
-      elif command -v nc >/dev/null 2>&1; then
-        if nc -z "$DB_HOST" "$DB_PORT" 2>/dev/null; then echo "Database port is accessible"
-        else echo "Error: cannot reach database at $DB_HOST:$DB_PORT"; exit 1; fi
-      else
-        echo "Warning: pg_isready/nc not available; skipping DB check"
-      fi
   script:
-    - export PATH="/home/gitlab-runner/bin:$PATH"
     - |
-      DOCKER_COMPOSE_CMD=$(cat /tmp/inkomoko-compose-cmd.txt 2>/dev/null || echo "docker-compose")
-      export IMAGE_TAG=$CI_COMMIT_REF_SLUG
-      echo "Deploying $CI_REGISTRY_IMAGE:$IMAGE_TAG to production (port $APP_PORT)"
-      $DOCKER_COMPOSE_CMD -f docker-compose.prod.yml pull inkomoko-ussd
-      $DOCKER_COMPOSE_CMD -f docker-compose.prod.yml down --remove-orphans || true
-      $DOCKER_COMPOSE_CMD -f docker-compose.prod.yml up -d --no-build
-    - *wait_healthy
-    - |
-      DOCKER_COMPOSE_CMD=$(cat /tmp/inkomoko-compose-cmd.txt 2>/dev/null || echo "docker-compose")
-      $DOCKER_COMPOSE_CMD -f docker-compose.prod.yml ps || true
-    - docker image prune -f --filter "until=168h" || true
-    - echo "Production deployment completed successfully"
-  environment:
-    name: production
-  dependencies:
-    - build-prod
+      echo "Production is not deployed from CI."
+      echo "On the server: git pull && docker compose --env-file .env -f docker-compose.prod.yml up --build -d"
+      exit 0
+  rules:
+    - when: never
   only:
     - main
-  retry: *retry_deploy

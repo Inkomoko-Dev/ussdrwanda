@@ -1,18 +1,23 @@
-# Production: external PostgreSQL (default 10.0.0.4:5432), network_mode: host.
-# Secrets come from GitLab CI/CD variables (validated in the deploy-prod job).
+# Production — run on the server (git pull / cron), not via the Efashe GitLab pipeline.
+# Builds the portal + JAR locally with the Dockerfile; no registry pull/push required.
+#
+#   cp .env.example .env   # then fill secrets (JWT_SECRET ≥ 32 chars, DB_*, OMNICHANNEL_*)
+#   docker compose --env-file .env -f docker-compose.prod.yml up --build -d
+#
+# PostgreSQL is external (default 10.0.0.4:5432). network_mode: host → port APP_PORT (8093).
+
 services:
   inkomoko-ussd:
-    image: registry.gitlab.com/efashe2/efashe-wallet/inkomoko-ussd:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
-      cache_from:
-        - registry.gitlab.com/efashe2/efashe-wallet/inkomoko-ussd:${IMAGE_TAG:-latest}
+    image: inkomoko-ussd:prod
+    container_name: inkomoko-ussd-service
     environment:
       - SERVER_PORT=${APP_PORT:-8093}
       - TZ=Africa/Kigali
       - LOGGING_FILE_NAME=/opt/tomcat/logs/inkomoko-ussd.log
-      # Production = Inkomoko's *311# shortcode (pilot *662*105# runs on staging)
+      # Production shortcode *311# (staging pilot keeps *662*105#)
       - USSD_SERVICE_CODE=${USSD_SERVICE_CODE:-311}
       # Database
       - SPRING_DATASOURCE_URL=jdbc:postgresql://${DB_HOST:-10.0.0.4}:${DB_PORT:-5432}/${DB_NAME:-inkomoko_db}
@@ -20,20 +25,19 @@ services:
       - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
       # Support
       - SUPPORT_HELPLINE=${SUPPORT_HELPLINE:-+250 XXX XXX XXX}
-      # Core banking (clients, loans) and MoMo repayments: omnichannel (default) or live
+      # Core banking / MoMo: omnichannel (default) or live
       - FINERACT_MODE=${FINERACT_MODE:-omnichannel}
       - PAYMENT_MODE=${PAYMENT_MODE:-omnichannel}
-      # Inkomoko Omnichannel API (production URL, key and secret from GitLab)
       - OMNICHANNEL_BASE_URL=${OMNICHANNEL_BASE_URL:-}
       - OMNICHANNEL_API_KEY=${OMNICHANNEL_API_KEY:-}
       - OMNICHANNEL_SECRET=${OMNICHANNEL_SECRET:-}
-      # Only read when FINERACT_MODE=live (Fineract directly, bypassing Omnichannel)
+      # Only when FINERACT_MODE=live
       - FINERACT_BASE_URL=${FINERACT_BASE_URL:-}
       - FINERACT_TENANT_ID=${FINERACT_TENANT_ID:-default}
       - FINERACT_USERNAME=${FINERACT_USERNAME:-}
       - FINERACT_PASSWORD=${FINERACT_PASSWORD:-}
       - FINERACT_PAYMENT_TYPE_ID=${FINERACT_PAYMENT_TYPE_ID:-1}
-      # Only read when PAYMENT_MODE=live (Efashe merchant API)
+      # Only when PAYMENT_MODE=live
       - PAYMENT_BASE_URL=${PAYMENT_BASE_URL:-}
       - PAYMENT_API_KEY=${PAYMENT_API_KEY:-}
       - PAYMENT_MERCHANT_CODE=${PAYMENT_MERCHANT_CODE:-INKOMOKO}
@@ -44,16 +48,15 @@ services:
       - SMS_BASE_URL=${SMS_BASE_URL:-}
       - SMS_API_KEY=${SMS_API_KEY:-}
       - SMS_SENDER_ID=${SMS_SENDER_ID:-INKOMOKO}
-      # Portal e-mail (default-password delivery)
+      # Portal e-mail
       - MAIL_MODE=${MAIL_MODE:-mock}
       - MAIL_FROM=${MAIL_FROM:-noreply@inkomoko.example}
       - MAIL_HOST=${MAIL_HOST:-}
       - MAIL_PORT=${MAIL_PORT:-587}
       - MAIL_USERNAME=${MAIL_USERNAME:-}
       - MAIL_PASSWORD=${MAIL_PASSWORD:-}
-      # Admin portal login tokens (JWT) - at least 32 characters
+      # Portal JWT — required, at least 32 characters
       - JWT_SECRET=${JWT_SECRET}
-      # Portal Super Administrator seeded on the first start of a new database (password change forced at first sign-in)
       - BOOTSTRAP_ADMIN_EMAIL=${BOOTSTRAP_ADMIN_EMAIL:-admin@yopmail.com}
       - BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD:-Admin@2026!}
     volumes:
@@ -66,7 +69,6 @@ services:
       retries: 5
       start_period: 90s
     restart: unless-stopped
-    container_name: inkomoko-ussd-service
     logging:
       driver: "json-file"
       options:
