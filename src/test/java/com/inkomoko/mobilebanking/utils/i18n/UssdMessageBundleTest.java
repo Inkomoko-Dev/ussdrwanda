@@ -40,6 +40,28 @@ class UssdMessageBundleTest {
     }
 
     @Test
+    void notOnboardedMessageDiffersFromNotRegistered() {
+        for (String l : MessageBundle.BUNDLED) {
+            String unknown = t(l, "client.not_registered");
+            String notOnboarded = t(l, "client.not_onboarded");
+            assertFalse(unknown.isBlank());
+            assertFalse(notOnboarded.isBlank());
+            assertTrue(!unknown.equals(notOnboarded),
+                    l + ": client.not_onboarded must not reuse the not-linked wording");
+        }
+    }
+
+    @Test
+    void navBackOffersBackAndHome() {
+        for (String l : MessageBundle.BUNDLED) {
+            String nav = t(l, "nav.back");
+            assertTrue(nav.contains("0."), l + " nav.back missing 0. Back line: " + nav);
+            assertTrue(nav.contains("00."), l + " nav.back missing 00. Home line: " + nav);
+            assertTrue(nav.contains("\n"), l + " nav.back must be two lines");
+        }
+    }
+
+    @Test
     void everyLanguageHasTheSameKeysAsEnglish() {
         Set<String> reference = B.keys(MessageBundle.REFERENCE);
         assertFalse(reference.isEmpty(), "English bundle not found on the classpath");

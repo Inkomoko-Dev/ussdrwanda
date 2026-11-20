@@ -154,10 +154,9 @@ build-prod:
       echo "Production is not built in CI."
       echo "On the server: git pull && docker compose --env-file .env -f docker-compose.prod.yml up --build -d"
       exit 0
+  # Disabled in CI (prod builds on the server). Do not combine with `only`/`except`.
   rules:
     - when: never
-  only:
-    - main
 
 # ============================================================================
 # Deploy (staging) - master
@@ -256,7 +255,6 @@ deploy-prod:
       echo "Production is not deployed from CI."
       echo "On the server: git pull && docker compose --env-file .env -f docker-compose.prod.yml up --build -d"
       exit 0
+  # Disabled in CI (prod deploys on the server). Do not combine with `only`/`except`.
   rules:
     - when: never
-  only:
-    - main
