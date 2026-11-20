@@ -40,25 +40,34 @@ public class OmnichannelFineractService implements FineractService {
         Map<String, Object> v = map(api.post("/ussd/phone/validate", Map.of("phoneNumber", msisdn)));
         log.info("CBS phone check msisdn={} valid={} registered={} accountStatus={} ussdEnabled={} message={}",
                 msisdn, v.get("valid"), v.get("registered"), v.get("accountStatus"), v.get("ussdEnabled"), v.get("message"));
-        if (!Boolean.TRUE.equals(v.get("registered"))) {
-            log.info("CBS result msisdn={} -> NOT REGISTERED in core banking", msisdn);
-            return Optional.empty();
-        }
+        boolean flaggedRegistered = Boolean.TRUE.equals(v.get("registered"));
+        // A customer profile is the source of truth for "exists in core banking".
+        // Omnichannel may leave registered/ussdEnabled false until portal USSD onboarding;
+        // those clients still self-serve: language → terms → PIN.
         Map<String, Object> profile;
         try {
             profile = map(api.get("/customer/profile", Map.of("phoneNumber", msisdn)));
         } catch (OmnichannelException e) {
             if (e.isNotFound()) {
-                log.info("CBS result msisdn={} -> registered but no customer profile found; treated as not registered", msisdn);
+                log.info("CBS result msisdn={} -> no customer profile (validate.registered={}); not registered",
+                        msisdn, flaggedRegistered);
                 return Optional.empty();
             }
             throw e;
         }
+        if (profile == null || profile.isEmpty()) {
+            log.info("CBS result msisdn={} -> empty profile; treated as not registered", msisdn);
+            return Optional.empty();
+        }
         String name = firstNonBlank(str(profile.get("displayName")), str(v.get("customerName")));
         Long customerId = customerId(profile);
-        log.info("CBS result msisdn={} -> REGISTERED customerId={} accountNo={} profileStatus={} eligible={}",
-                msisdn, customerId, profile.get("accountNo"), profile.get("accountStatus"), profile.get("eligible"));
-        // registered=true alone qualifies the customer: they accept the terms, then create a PIN in our database.
+        if (customerId == null) {
+            log.info("CBS result msisdn={} -> profile without customerId; treated as not registered", msisdn);
+            return Optional.empty();
+        }
+        log.info("CBS result msisdn={} -> IN CORE BANKING customerId={} accountNo={} profileStatus={} eligible={} validate.registered={}",
+                msisdn, customerId, profile.get("accountNo"), profile.get("accountStatus"), profile.get("eligible"),
+                flaggedRegistered);
         return Optional.of(new ClientDto(customerId, name,
                 firstNonBlank(str(profile.get("phoneNumber")), msisdn), str(profile.get("email")), true));
     }

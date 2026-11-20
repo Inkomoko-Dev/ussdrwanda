@@ -109,9 +109,9 @@ class UssdMessageBundleTest {
         String titles = String.join(" / ", all.stream().map(l -> t(l, "language.title")).toList());
         StringBuilder langMenu = new StringBuilder(titles);
         for (int i = 0; i < all.size(); i++) langMenu.append('\n').append(i + 1).append(". ").append(NATIVE_NAMES.get(all.get(i)));
-        String invalidAll = String.join(" / ", all.stream().map(l -> t(l, "common.invalid")).toList());
         assertFits("language menu", langMenu.toString());
-        assertFits("invalid + language menu", invalidAll + "\n" + langMenu);
+        // Invalid is a single English line so it stays visible under the 182-char budget
+        assertFits("invalid + language menu", t("en", "common.invalid") + "\n" + langMenu);
 
         for (String l : all) {
             String c = l + " ";
@@ -150,8 +150,8 @@ class UssdMessageBundleTest {
             }
             assertFits(c + "loan status", ls.append(back(l)).toString());
 
-            // Selection lists: "product (loan id)", name capped at 14 chars (CommonMenus.loanListLabel)
-            String loanLabel = "Refugee Enterp (000000123)";
+            // Selection lists: "product (loan id)", name room from CommonMenus.loanListLabel
+            String loanLabel = "Refugee Ent (000000123)";
             StringBuilder sel = new StringBuilder(t(l, "loan.select"));
             for (int i = 1; i <= 5; i++) sel.append('\n').append(i).append(". ").append(loanLabel);
             assertFits(c + "loan selection", sel.append(back(l)).toString());

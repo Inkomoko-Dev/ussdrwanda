@@ -168,7 +168,11 @@ public class UssdFlowService {
         s.setAppRef(Utility.generateAppRef());
         s.setNetworkCode(network);
         s.setLevel(0);
-        s.setLanguage(languagePreferenceService.chosenLanguage(req.msisdn()).orElse(null));
+        // Only reuse a saved language when terms were already accepted; otherwise a declined
+        // session would skip the language screen and land on Terms again (feels stuck).
+        s.setLanguage(consentService.hasCurrentConsent(req.msisdn())
+                ? languagePreferenceService.chosenLanguage(req.msisdn()).orElse(null)
+                : null);
         s.setProcessedInputs(initialSegments);
         s.setCreatedAt(now);
         s.setUpdatedAt(now);
@@ -213,8 +217,9 @@ public class UssdFlowService {
         String chosen = choice >= 1 && choice <= languages.size() ? languages.get(choice - 1) : null;
         if (chosen == null) return headings.invalidLanguage(languages);
         s.setLanguage(chosen);
-        languagePreferenceService.savePreferredLanguage(s.getMsisdn(), chosen);
+        // Persist language only after terms are accepted (see handleConsent); Settings still saves immediately.
         if (consentService.hasCurrentConsent(s.getMsisdn())) {
+            languagePreferenceService.savePreferredLanguage(s.getMsisdn(), chosen);
             s.setConsentAccepted(true);
             return identifyClient(s);
         }
@@ -286,10 +291,8 @@ public class UssdFlowService {
                 audit.ussd(s.getMsisdn(), s.getSessionId(), "LOGIN_BLOCKED_LOCKED", String.valueOf(c.clientId()), false, null);
                 yield common.endWith(s, ESessionEndReason.ACCOUNT_LOCKED, headings.pinLocked(lang, helpline));
             }
-            case NOT_ONBOARDED -> {
-                audit.ussd(s.getMsisdn(), s.getSessionId(), "CLIENT_NOT_ONBOARDED", String.valueOf(c.clientId()), false, null);
-                yield common.endWith(s, ESessionEndReason.NOT_REGISTERED, headings.notOnboarded(lang, helpline));
-            }
+            // Portal onboarding is optional: CBS clients choose language, accept terms, then set a PIN.
+            case NOT_ONBOARDED, PIN_NOT_SET, ACTIVE -> null;
             case DISABLED -> {
                 audit.ussd(s.getMsisdn(), s.getSessionId(), "CLIENT_DISABLED", String.valueOf(c.clientId()), false, null);
                 yield common.endWith(s, ESessionEndReason.ACCOUNT_LOCKED, headings.accessDisabled(lang, helpline));
@@ -305,16 +308,18 @@ public class UssdFlowService {
             s.setConsentAccepted(true);
             String version = headings.consentVersion(lang);
             consentRepo.save(new ConsentLog(s.getMsisdn(), s.getSessionId(), true, version, now));
+            if (lang != null) languagePreferenceService.savePreferredLanguage(s.getMsisdn(), lang);
             audit.ussd(s.getMsisdn(), s.getSessionId(), "CONSENT_ACCEPTED", version, true, null);
             return identifyClient(s);
         }
         if ("2".equals(input)) {
             String version = headings.consentVersion(lang);
             consentRepo.save(new ConsentLog(s.getMsisdn(), s.getSessionId(), false, version, now));
+            languagePreferenceService.clearPreferredLanguage(s.getMsisdn());
             audit.ussd(s.getMsisdn(), s.getSessionId(), "CONSENT_DECLINED", version, true, null);
             return common.endWith(s, ESessionEndReason.CONSENT_DECLINED, headings.thankYou(lang));
         }
-        return headings.invalidChoice(lang) + headings.consent(lang);
+        return headings.withInvalid(lang, headings.consent(lang));
     }
 
     private String identifyClient(UssdSession s) {
@@ -353,15 +358,11 @@ public class UssdFlowService {
                 audit.ussd(s.getMsisdn(), s.getSessionId(), "LOGIN_BLOCKED_LOCKED", String.valueOf(c.clientId()), false, null);
                 yield common.endWith(s, ESessionEndReason.ACCOUNT_LOCKED, headings.pinLocked(lang, helpline));
             }
-            case NOT_ONBOARDED -> {
-                audit.ussd(s.getMsisdn(), s.getSessionId(), "CLIENT_NOT_ONBOARDED", String.valueOf(c.clientId()), false, null);
-                yield common.endWith(s, ESessionEndReason.NOT_REGISTERED, headings.notOnboarded(lang, helpline));
-            }
             case DISABLED -> {
                 audit.ussd(s.getMsisdn(), s.getSessionId(), "CLIENT_DISABLED", String.valueOf(c.clientId()), false, null);
                 yield common.endWith(s, ESessionEndReason.ACCOUNT_LOCKED, headings.accessDisabled(lang, helpline));
             }
-            case PIN_NOT_SET -> {
+            case NOT_ONBOARDED, PIN_NOT_SET -> {
                 s.setStep(STEP_PIN_SETUP);
                 yield headings.pinSetup(lang, props.getUssd().getPinLength());
             }
@@ -481,7 +482,7 @@ public class UssdFlowService {
         if ("exit".equals(service)) {
             return common.endWith(s, ESessionEndReason.USER_EXIT, headings.thankYou(l));
         }
-        if (service == null) return headings.invalidChoice(l) + headings.mainMenu(l);
+        if (service == null) return headings.withInvalid(l, headings.mainMenu(l));
 
         s.resetServiceState();
         s.setService(service);
@@ -491,7 +492,8 @@ public class UssdFlowService {
 
     private String handleServiceLevel(UssdSession s, String input) {
         if (!s.isAuthenticated()) return common.unavailable(s);
-        if ("00".equals(input) || s.getService() == null) return common.backToMain(s);
+        // 00 = Home (main menu). 0 = one step back — handled inside each service menu.
+        if ("00".equals(input) || s.getService() == null) return common.home(s);
         return dispatch(s, input);
     }
 

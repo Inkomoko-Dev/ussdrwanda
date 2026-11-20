@@ -21,8 +21,8 @@ services:
       - USSD_SERVICE_CODE=${USSD_SERVICE_CODE:-311}
       # Database
       - SPRING_DATASOURCE_URL=jdbc:postgresql://${DB_HOST:-10.0.0.4}:${DB_PORT:-5432}/${DB_NAME:-inkomoko_db}
-      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
-      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME:?Set DB_USERNAME in .env}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD:?Set DB_PASSWORD in .env}
       # Support
       - SUPPORT_HELPLINE=${SUPPORT_HELPLINE:-+250 XXX XXX XXX}
       # Core banking / MoMo: omnichannel (default) or live
@@ -55,8 +55,8 @@ services:
       - MAIL_PORT=${MAIL_PORT:-587}
       - MAIL_USERNAME=${MAIL_USERNAME:-}
       - MAIL_PASSWORD=${MAIL_PASSWORD:-}
-      # Portal JWT — required, at least 32 characters
-      - JWT_SECRET=${JWT_SECRET}
+      # Portal JWT — must be set in .env (Compose fails here if missing/blank; app needs ≥ 32 chars)
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env — at least 32 characters}
       - BOOTSTRAP_ADMIN_EMAIL=${BOOTSTRAP_ADMIN_EMAIL:-admin@yopmail.com}
       - BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD:-Admin@2026!}
     volumes:

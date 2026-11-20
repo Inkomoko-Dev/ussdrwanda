@@ -18,8 +18,8 @@ import java.util.Map;
  * 1. Check Balance (ToR 3.1(i)) — always read live from Fineract.
  *
  *   entry        → 1 repayable loan: balance screen | several: loan list | none: message
- *   SELECT_LOAN  → balance screen for the chosen loan
- *   DISPLAY      → 0 = back to main menu
+ *   SELECT_LOAN  → balance screen for the chosen loan (0 = Home)
+ *   DISPLAY      → 0 = Back to loan list (or Home if only one loan)
  */
 @Slf4j
 @Component
@@ -49,7 +49,7 @@ public class CheckBalanceMenu {
                 s.setStep(STEP_SELECT);
                 return common.loanSelectionScreen(s, loans, common::loanListLabel);
             }
-            if ("0".equals(input)) return common.backToMain(s);
+            if ("0".equals(input)) return back(s);
 
             if (STEP_SELECT.equals(s.getStep())) {
                 Long loanId = common.resolveLoanChoice(s, input);
@@ -59,12 +59,25 @@ public class CheckBalanceMenu {
                 }
                 return display(s, loanId);
             }
-            // DISPLAY: anything other than 0 re-shows main menu options
+            // DISPLAY: anything other than 0 re-shows the nav footer
             return common.invalidThen(s, headings.back(l).trim());
         } catch (Exception e) {
             log.error("Balance enquiry failed msisdn={} error={}", s.getMsisdn(), e.getMessage());
             return common.unavailable(s);
         }
+    }
+
+    /** 0. Back — one step: balance → loan list → main menu. */
+    private String back(UssdSession s) {
+        if (STEP_DISPLAY.equals(s.getStep())) {
+            List<LoanSummaryDto> loans = fineract.getClientLoans(s.getClientId()).stream()
+                    .filter(x -> x.status().isRepayable()).toList();
+            if (loans.size() > 1) {
+                s.setStep(STEP_SELECT);
+                return common.loanSelectionScreen(s, loans, common::loanListLabel);
+            }
+        }
+        return common.home(s);
     }
 
     private String display(UssdSession s, Long loanId) {

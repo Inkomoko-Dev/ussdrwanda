@@ -75,4 +75,10 @@ public class LanguagePreferenceService {
             log.debug("language preference race for {}", msisdn);
         }
     }
+
+    /** Drops a saved language (e.g. after Terms are declined) so the next dial starts at language again. */
+    public void clearPreferredLanguage(String msisdn) {
+        if (msisdn == null || msisdn.isBlank()) return;
+        repo.findByMsisdn(msisdn).ifPresent(repo::delete);
+    }
 }

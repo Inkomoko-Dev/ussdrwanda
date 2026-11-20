@@ -61,7 +61,7 @@ cd frontend && npm install && npm run dev
 ## What this system does
 
 1. Customer dials the shortcode → telecom gateway POSTs to this app.
-2. App checks Omnichannel (`registered: true`?) → language → terms → PIN → main menu.
+2. App checks Omnichannel for a customer profile → language → terms → PIN → main menu (portal onboarding optional).
 3. Loan balance, status, mini statement and repayments are fetched/initiated via Omnichannel.
 4. Staff use `/portal` for customers, sessions, repayments, USSD wording, users and audit.
 
@@ -128,7 +128,7 @@ Both paths share `UssdFlowService`. Set the shortcode with `USSD_SERVICE_CODE` (
 ```
 Dial → language → terms → (PIN setup | PIN entry) → main menu
   1 Loan / balance   2 Repay   3 Account   4 Settings   5 FAQs   0 Exit
-Inside a service: 0 = back, 00 = main menu
+Inside a service: `0` = Back (one step toward the first menu), `00` = Home (main menu)
 ```
 
 Use the **simulator** locally, or curl Comviva-style:

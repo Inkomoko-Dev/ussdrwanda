@@ -16,8 +16,8 @@ import java.util.Map;
  * /api/admin/faqs), so office locations, helpline and answers change without a release.
  *
  *   entry  → list of titles
- *   LIST   → chosen item's text (0 = back to main menu)
- *   ITEM   → 0 = back to the list
+ *   LIST   → chosen item (0 = back to main menu, 00 = Home)
+ *   ITEM   → 0 = back to the list, 00 = Home
  */
 @Component
 @RequiredArgsConstructor
@@ -46,7 +46,7 @@ public class HelpMenu {
             return common.invalidThen(s, headings.back(l).trim());
         }
         // STEP_LIST
-        if ("0".equals(input)) return common.backToMain(s);
+        if ("0".equals(input)) return common.home(s);
         int choice = GeneralMethods.parseInputAsInteger(input);
         if (choice < 1 || choice > items.size()) return headings.invalidChoice(l) + list(s, items);
         s.setStep(STEP_ITEM);

@@ -25,15 +25,20 @@ public class CommonMenus {
     private final com.inkomoko.mobilebanking.services.CountryService countries;
     private final CommonHeadings headings;
 
-    /** Clears service state and shows the main menu. */
+    /** {@code 00. Home} — clears service state and shows the main menu. */
     public String backToMain(UssdSession s) {
         s.resetServiceState();
         s.setLevel(LEVEL_MAIN_MENU);
         return headings.mainMenu(s.getLanguage());
     }
 
+    /** Alias for {@link #backToMain(UssdSession)} (USSD {@code 00}). */
+    public String home(UssdSession s) {
+        return backToMain(s);
+    }
+
     public String invalidThen(UssdSession s, String screen) {
-        return headings.invalidChoice(s.getLanguage()) + screen;
+        return headings.withInvalid(s.getLanguage(), screen);
     }
 
     /** Ends the session with a "service unavailable" screen (core system / network failure). */
@@ -77,7 +82,8 @@ public class CommonMenus {
 
     /**
      * Selection-list label: product name and loan id, e.g. {@code SME Growth (000001001)}.
-     * The name is shortened so five loans still fit one 182-character screen.
+     * The name is shortened so five loans plus the two-line Back/Home footer still fit
+     * one 182-character USSD screen.
      */
     public String loanListLabel(LoanSummaryDto loan) {
         String id = loan.accountNo() != null && !loan.accountNo().isBlank()
@@ -85,7 +91,7 @@ public class CommonMenus {
                 : String.valueOf(loan.loanId());
         String name = loan.productName() == null ? "" : loan.productName().trim();
         if (name.isEmpty()) return id;
-        int room = 26 - (id.length() + 3);
+        int room = 23 - (id.length() + 3);
         if (room < 4) return name + " (" + id + ")";
         if (name.length() > room) {
             String cut = name.substring(0, room);

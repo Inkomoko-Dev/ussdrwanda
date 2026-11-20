@@ -62,15 +62,24 @@ public class SettingsMenu {
     }
 
     private String back(UssdSession s) {
-        if (STEP_MENU.equals(s.getStep())) return common.backToMain(s);
-        return menu(s);
+        // 0. Back: one step toward settings menu, then main menu
+        return switch (s.getStep()) {
+            case STEP_MENU -> common.home(s);
+            case STEP_PIN_CONFIRM -> {
+                s.setStep(STEP_PIN_NEW);
+                s.setPendingPinHash(null);
+                yield headings.text(s.getLanguage(), "settings.pin_new") + headings.back(s.getLanguage());
+            }
+            case STEP_PIN_NEW -> askCurrentPin(s);
+            default -> menu(s); // LANGUAGE, PIN_CURRENT → settings menu
+        };
     }
 
     private String choose(UssdSession s, String input) {
         return switch (input) {
             case "1" -> languageList(s);
             case "2" -> askCurrentPin(s);
-            default -> headings.invalidChoice(s.getLanguage()) + menu(s);
+            default -> headings.withInvalid(s.getLanguage(), menu(s));
         };
     }
 
@@ -89,7 +98,7 @@ public class SettingsMenu {
         List<String> languages = countries.languages();
         int choice = GeneralMethods.parseInputAsInteger(input);
         if (choice < 1 || choice > languages.size()) {
-            return headings.invalidChoice(s.getLanguage()) + languageList(s);
+            return headings.withInvalid(s.getLanguage(), languageList(s));
         }
         String chosen = languages.get(choice - 1);
         s.setLanguage(chosen);

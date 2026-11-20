@@ -21,17 +21,18 @@ public class LoanMenu {
 
     public String processMenu(UssdSession s, String input) {
         if (s.getStep() == null) return menu(s);
-        if ("0".equals(input)) return common.backToMain(s);
+        // First (only) loan screen: 0. Back → main menu
+        if ("0".equals(input)) return common.home(s);
         if (!countries.repaymentEnabled()) {
             return switch (input) {
                 case "1" -> openStatement(s);
-                default -> headings.invalidChoice(s.getLanguage()) + menu(s);
+                default -> headings.withInvalid(s.getLanguage(), menu(s));
             };
         }
         return switch (input) {
             case "1" -> openRepay(s);
             case "2" -> openStatement(s);
-            default -> headings.invalidChoice(s.getLanguage()) + menu(s);
+            default -> headings.withInvalid(s.getLanguage(), menu(s));
         };
     }
 

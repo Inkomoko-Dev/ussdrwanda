@@ -40,25 +40,18 @@ public class CommonHeadings {
 
     // ── Language screen: shown before a language is known, so it uses every country language ──
     public String languageMenu(List<String> languages) {
-        return languageScreen(languages, null);
+        String options = options(languages);
+        String full = joinAll(languages, "language.title") + options;
+        if (full.length() <= limit(languages)) return full;
+        String first = languages.isEmpty() ? MessageBundle.REFERENCE : languages.get(0);
+        return messages.text(first, "language.title") + options;
     }
 
     public String invalidLanguage(List<String> languages) {
-        return languageScreen(languages, "common.invalid");
-    }
-
-    /**
-     * Title (and optional error line) in every offered language, then the native language names.
-     * With many languages this can outgrow one screen, so it falls back to the first language only.
-     */
-    private String languageScreen(List<String> languages, String errorKey) {
-        String options = options(languages);
-        String full = (errorKey == null ? "" : joinAll(languages, errorKey) + "\n") + joinAll(languages, "language.title")
-                + options;
-        if (full.length() <= limit(languages)) return full;
-        String first = languages.isEmpty() ? MessageBundle.REFERENCE : languages.get(0);
-        return (errorKey == null ? "" : messages.text(first, errorKey) + "\n") + messages.text(first, "language.title")
-                + options;
+        // One short English line so "Invalid choice." is always visible; the multilingual
+        // title+options follow. Joining invalid in every language used to blow the 182-char
+        // budget and fall back to Kinyarwanda-only, which testers read as "no invalid message".
+        return withInvalid(MessageBundle.REFERENCE, languageMenu(languages));
     }
 
     private String options(List<String> languages) {
@@ -72,6 +65,10 @@ public class CommonHeadings {
     private int limit(List<String> languages) {
         boolean ucs2 = languages.stream().anyMatch(l -> languageService.charset(l) == ECharset.UCS2);
         return (ucs2 ? ECharset.UCS2 : ECharset.GSM7).ussdMax();
+    }
+
+    private int limit(String language) {
+        return limit(List.of(language == null ? MessageBundle.REFERENCE : language));
     }
 
     private String joinAll(List<String> languages, String key) {
@@ -102,7 +99,10 @@ public class CommonHeadings {
     }
 
     // ── Navigation / generic ──────────────────────────────────────────────
-    /** "\n0. Back" — appended under a screen. */
+    /**
+     * Navigation footer appended under service screens:
+     * {@code 0. Back} (one step) and {@code 00. Home} (main menu).
+     */
     public String back(String l) {
         return "\n" + messages.text(l, "nav.back");
     }
@@ -110,6 +110,20 @@ public class CommonHeadings {
     /** "Invalid choice.\n" — prefixed to the re-shown screen. */
     public String invalidChoice(String l) {
         return line(l, "common.invalid");
+    }
+
+    /**
+     * Prefixes {@code common.invalid} and keeps that line when the combined screen would exceed
+     * the USSD character budget (gateways otherwise truncate from the top and drop the error).
+     */
+    public String withInvalid(String l, String screen) {
+        String prefix = invalidChoice(l);
+        String body = screen == null ? "" : screen;
+        String full = prefix + body;
+        int max = limit(l);
+        if (full.length() <= max) return full;
+        int room = Math.max(0, max - prefix.length());
+        return prefix + (room == 0 ? "" : body.substring(0, Math.min(room, body.length())));
     }
 
     public String thankYou(String l) {

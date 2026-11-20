@@ -73,9 +73,10 @@ public class RepayLoanMenu {
         return offer(s, loan);
     }
 
+    /** 0. Back — one step toward the loan list / main menu. */
     private String back(UssdSession s) {
         return switch (s.getStep()) {
-            case STEP_SELECT -> common.backToMain(s);
+            case STEP_SELECT -> common.home(s);
             case STEP_OFFER -> leaveOffer(s);
             case STEP_AMOUNT, STEP_PAYER -> offer(s, fineract.getLoanDetails(s.getLoanId()));
             case STEP_NETWORK -> payer(s);
@@ -88,7 +89,7 @@ public class RepayLoanMenu {
     private String leaveOffer(UssdSession s) {
         List<LoanSummaryDto> loans = fineract.getClientLoans(s.getClientId()).stream()
                 .filter(x -> x.status().isRepayable()).toList();
-        if (loans.size() <= 1) return common.backToMain(s);
+        if (loans.size() <= 1) return common.home(s);
         s.setStep(STEP_SELECT);
         return common.loanSelectionScreen(s, loans, common::loanListLabel);
     }

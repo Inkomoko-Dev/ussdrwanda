@@ -39,8 +39,7 @@ public class AccountInfoMenu {
     public String processMenu(UssdSession s, String input) {
         try {
             if (s.getStep() == null) return menu(s);
-            if ("0".equals(input) && !STEP_MENU.equals(s.getStep())) return menu(s);
-            if ("0".equals(input)) return common.backToMain(s);
+            if ("0".equals(input)) return back(s);
             return switch (s.getStep()) {
                 case STEP_MENU -> choose(s, input);
                 case STEP_SELECT -> chooseLoan(s, input);
@@ -59,12 +58,26 @@ public class AccountInfoMenu {
         return headings.text(s.getLanguage(), "menu.account") + headings.back(s.getLanguage());
     }
 
+    /** 0. Back — one step toward the account menu, then main menu. */
+    private String back(UssdSession s) {
+        if (STEP_MENU.equals(s.getStep())) return common.home(s);
+        if (STEP_DUE.equals(s.getStep()) && s.getLoanOptions() != null) {
+            List<LoanSummaryDto> loans = fineract.getClientLoans(s.getClientId()).stream()
+                    .filter(x -> x.status().isRepayable()).toList();
+            if (loans.size() > 1) {
+                s.setStep(STEP_SELECT);
+                return common.loanSelectionScreen(s, loans, common::loanListLabel);
+            }
+        }
+        return menu(s); // SELECT, PHONE, DUE (single loan) → account menu
+    }
+
     private String choose(UssdSession s, String input) {
         return switch (input) {
             case "1" -> openStatement(s);
             case "2" -> startDue(s);
             case "3" -> phone(s);
-            default -> headings.invalidChoice(s.getLanguage()) + menu(s);
+            default -> headings.withInvalid(s.getLanguage(), menu(s));
         };
     }
 

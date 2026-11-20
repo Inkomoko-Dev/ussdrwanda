@@ -76,14 +76,25 @@ public class MiniStatementMenu {
         return common.loanSelectionScreen(s, loans, common::loanListLabel);
     }
 
+    /** 0. Back — one step: SMS confirm → page → prior page / loan list → main menu. */
     private String back(UssdSession s) {
         String step = s.getStep();
-        if (step != null && step.startsWith("SMS:")) return statement(s, fineract.getLoanDetails(s.getLoanId()), pageOf(step));
-        if (step != null && step.startsWith("PAGE:") && s.getLoanOptions() != null) {
-            s.setStep(null);
-            return start(s);
+        if (step != null && step.startsWith("SMS:")) {
+            return statement(s, fineract.getLoanDetails(s.getLoanId()), pageOf(step));
         }
-        return common.backToMain(s);
+        if (step != null && step.startsWith("PAGE:")) {
+            int page = pageOf(step);
+            if (page > 0) return statement(s, fineract.getLoanDetails(s.getLoanId()), page - 1);
+            if (s.getLoanOptions() != null) {
+                s.setStep(STEP_SELECT);
+                List<LoanSummaryDto> loans = fineract.getClientLoans(s.getClientId()).stream()
+                        .filter(x -> DISBURSED.contains(x.status()))
+                        .sorted((a, b) -> Boolean.compare(b.status().isRepayable(), a.status().isRepayable()))
+                        .toList();
+                return common.loanSelectionScreen(s, loans, common::loanListLabel);
+            }
+        }
+        return common.home(s);
     }
 
     private String chooseLoan(UssdSession s, String input) {

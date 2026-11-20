@@ -33,7 +33,7 @@ public class LoanStatusMenu {
     public String processMenu(UssdSession s, String input) {
         String l = s.getLanguage();
         if (s.getStep() != null) {
-            if ("0".equals(input)) return common.backToMain(s);
+            if ("0".equals(input)) return common.home(s);
             return common.invalidThen(s, headings.back(l).trim());
         }
         try {
